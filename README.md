@@ -46,10 +46,11 @@ shravan-creative-studio/
 ├── custom-content.html
 ├── script.js
 ├── style.css
-└── data/                      # local/runtime data, not pushed to GitHub
-    ├── leads.json
-    ├── custom-devices.json
-    └── visitors.json
+└── data/
+    ├── .gitkeep              # keeps the folder structure in GitHub
+    ├── leads.json            # local/runtime, not pushed to GitHub
+    ├── custom-devices.json   # local/runtime, not pushed to GitHub
+    └── visitors.json         # local/runtime, not pushed to GitHub
 ```
 
 ## File purpose
@@ -65,6 +66,7 @@ shravan-creative-studio/
 - `.env.example` - Environment variable template
 - `.gitignore` - Ignore secrets, dependencies, and local runtime data
 - `FRIEND-HANDOVER.md` - Project handover notes
+- `data/.gitkeep` - Keeps the `data/` folder visible in the repository
 - `data/*.json` - Runtime data files for leads, device locks, and visitors
 
 ## Important routes
