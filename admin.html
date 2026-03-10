@@ -1,0 +1,370 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin Panel | Shravan Creative Studio</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet" />
+  <style>
+    :root {
+      --bg: #0b1020;
+      --bg-soft: #111931;
+      --card: #172447;
+      --stroke: rgba(255, 255, 255, 0.12);
+      --text: #eef3ff;
+      --muted: #a9b6d6;
+      --ok: #22c55e;
+      --warn: #f59e0b;
+    }
+
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: "Manrope", system-ui, sans-serif;
+      color: var(--text);
+      background:
+        radial-gradient(circle at 10% 10%, rgba(99, 102, 241, 0.28), transparent 40%),
+        radial-gradient(circle at 80% 20%, rgba(34, 197, 94, 0.18), transparent 35%),
+        var(--bg);
+      min-height: 100vh;
+    }
+
+    .container {
+      width: min(1200px, 95vw);
+      margin: 1.2rem auto 2rem;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      margin-bottom: 1rem;
+    }
+
+    h1 { font-size: clamp(1.2rem, 2.5vw, 1.8rem); }
+
+    .muted { color: var(--muted); font-size: 0.92rem; }
+
+    .actions { display: flex; flex-wrap: wrap; gap: 0.6rem; }
+
+    button, .link-btn {
+      border: 1px solid var(--stroke);
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text);
+      border-radius: 10px;
+      padding: 0.6rem 0.9rem;
+      cursor: pointer;
+      text-decoration: none;
+      font-weight: 600;
+      font-size: 0.9rem;
+    }
+
+    button:hover, .link-btn:hover { transform: translateY(-1px); }
+
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 0.8rem;
+      margin-bottom: 1rem;
+    }
+
+    .card {
+      border: 1px solid var(--stroke);
+      border-radius: 14px;
+      background: rgba(255, 255, 255, 0.04);
+      padding: 1rem;
+    }
+
+    .card h3 { font-size: 0.86rem; text-transform: uppercase; letter-spacing: 0.6px; color: var(--muted); }
+    .card p { font-size: 1.5rem; font-weight: 800; margin-top: 0.35rem; }
+
+    .toolbar {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.65rem;
+      margin-bottom: 0.8rem;
+    }
+
+    input[type="search"] {
+      flex: 1;
+      min-width: 220px;
+      border: 1px solid var(--stroke);
+      background: rgba(255, 255, 255, 0.04);
+      color: var(--text);
+      border-radius: 10px;
+      padding: 0.65rem 0.8rem;
+      outline: none;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      overflow: hidden;
+      border-radius: 12px;
+      border: 1px solid var(--stroke);
+    }
+
+    th, td {
+      text-align: left;
+      padding: 0.68rem 0.7rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      font-size: 0.86rem;
+      vertical-align: top;
+    }
+
+    th {
+      background: rgba(255, 255, 255, 0.07);
+      position: sticky;
+      top: 0;
+    }
+
+    .table-wrap {
+      overflow: auto;
+      max-height: 62vh;
+      border-radius: 12px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.2rem 0.55rem;
+      border-radius: 999px;
+      border: 1px solid var(--stroke);
+      font-size: 0.75rem;
+      color: #dbe6ff;
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    .ok { color: var(--ok); }
+    .warn { color: var(--warn); }
+
+    .error {
+      margin: 0.8rem 0;
+      border: 1px solid rgba(255, 107, 107, 0.5);
+      background: rgba(255, 107, 107, 0.12);
+      padding: 0.65rem 0.8rem;
+      border-radius: 10px;
+      color: #ffe5e5;
+      display: none;
+    }
+
+    .error.show { display: block; }
+
+    @media (max-width: 760px) {
+      .topbar { flex-direction: column; align-items: flex-start; }
+      th, td { font-size: 0.8rem; }
+      .card p { font-size: 1.2rem; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="topbar">
+      <div>
+        <h1>Admin Panel</h1>
+        <p class="muted" id="welcomeText">Checking admin session...</p>
+      </div>
+      <div class="actions">
+        <a href="/" class="link-btn">Open Website</a>
+        <button id="refreshBtn">Refresh</button>
+        <button id="logoutBtn">Logout</button>
+      </div>
+    </div>
+
+    <div id="errorBox" class="error"></div>
+
+    <div class="grid">
+      <div class="card">
+        <h3>Total Leads</h3>
+        <p id="totalLeads">0</p>
+      </div>
+      <div class="card">
+        <h3>Today's Leads</h3>
+        <p id="todayLeads">0</p>
+      </div>
+      <div class="card">
+        <h3>Top Source</h3>
+        <p id="topSource">-</p>
+      </div>
+      <div class="card">
+        <h3>Total Visitors</h3>
+        <p id="totalVisitors">0</p>
+      </div>
+      <div class="card">
+        <h3>Today's Visitors</h3>
+        <p id="todayVisitors">0</p>
+      </div>
+      <div class="card">
+        <h3>Status</h3>
+        <p class="ok" id="panelStatus">Live</p>
+      </div>
+    </div>
+
+    <div class="toolbar">
+      <input id="searchInput" type="search" placeholder="Search by name/email/service/source..." />
+      <span class="badge" id="countBadge">0 rows</span>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Time</th>
+            <th>Source</th>
+            <th>Name</th>
+            <th>Email</th>
+            <th>Service</th>
+            <th>Budget</th>
+            <th>Details</th>
+          </tr>
+        </thead>
+        <tbody id="leadRows"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    const welcomeText = document.getElementById("welcomeText");
+    const errorBox = document.getElementById("errorBox");
+    const totalLeads = document.getElementById("totalLeads");
+    const todayLeads = document.getElementById("todayLeads");
+    const topSource = document.getElementById("topSource");
+    const countBadge = document.getElementById("countBadge");
+    const leadRows = document.getElementById("leadRows");
+    const searchInput = document.getElementById("searchInput");
+    const refreshBtn = document.getElementById("refreshBtn");
+    const logoutBtn = document.getElementById("logoutBtn");
+
+  const totalVisitors = document.getElementById("totalVisitors");
+  const todayVisitors = document.getElementById("todayVisitors");
+
+    let allLeads = [];
+
+    function showError(message) {
+      errorBox.textContent = message;
+      errorBox.classList.add("show");
+    }
+
+    function clearError() {
+      errorBox.classList.remove("show");
+      errorBox.textContent = "";
+    }
+
+    function fmtDate(value) {
+      if (!value) return "-";
+      const d = new Date(value);
+      return new Intl.DateTimeFormat("en-IN", {
+        dateStyle: "medium",
+        timeStyle: "short"
+      }).format(d);
+    }
+
+    function renderRows(rows) {
+      leadRows.innerHTML = rows.map((lead) => `
+        <tr>
+          <td>${fmtDate(lead.createdAt)}</td>
+          <td>${lead.source || "-"}</td>
+          <td>${lead.name || "-"}</td>
+          <td>${lead.email || "-"}</td>
+          <td>${lead.service || lead.packageName || "-"}</td>
+          <td>${lead.budget || lead.packagePrice || (lead.estimate?.total ? `₹${lead.estimate.total}` : "-")}</td>
+          <td>${lead.details || "-"}</td>
+        </tr>
+      `).join("");
+
+      countBadge.textContent = `${rows.length} rows`;
+    }
+
+    function applySearch() {
+      const q = searchInput.value.trim().toLowerCase();
+      if (!q) {
+        renderRows(allLeads);
+        return;
+      }
+
+      const filtered = allLeads.filter((lead) => {
+        const haystack = [
+          lead.source,
+          lead.name,
+          lead.email,
+          lead.service,
+          lead.budget,
+          lead.details,
+          lead.packageName,
+          lead.packagePrice
+        ].join(" ").toLowerCase();
+
+        return haystack.includes(q);
+      });
+
+      renderRows(filtered);
+    }
+
+    function computeTopSource(bySource) {
+      const entries = Object.entries(bySource || {});
+      if (!entries.length) return "-";
+      entries.sort((a, b) => b[1] - a[1]);
+      return `${entries[0][0]} (${entries[0][1]})`;
+    }
+
+    async function loadAdminData() {
+      clearError();
+
+      try {
+        const meRes = await fetch("/auth/me");
+        const meData = await meRes.json();
+
+        if (!meRes.ok || !meData?.ok || !meData?.user?.isAdmin) {
+          window.location.href = "/login";
+          return;
+        }
+
+        welcomeText.textContent = `Logged in as ${meData.user.email}`;
+
+        const [statsRes, leadsRes, visitorsRes] = await Promise.all([
+          fetch("/api/leads/stats"),
+          fetch("/api/leads?limit=200"),
+          fetch("/api/visitors/stats")
+        ]);
+
+        const statsData = await statsRes.json();
+        const leadsData = await leadsRes.json();
+        const visitorsData = await visitorsRes.json();
+
+        if (!statsRes.ok || !leadsRes.ok || !visitorsRes.ok || !statsData.ok || !leadsData.ok || !visitorsData.ok) {
+          throw new Error("Failed to load admin data");
+        }
+
+        totalLeads.textContent = statsData.total || 0;
+        todayLeads.textContent = statsData.today || 0;
+        topSource.textContent = computeTopSource(statsData.bySource);
+
+        totalVisitors.textContent = visitorsData.total || 0;
+        todayVisitors.textContent = visitorsData.today || 0;
+
+        allLeads = Array.isArray(leadsData.leads) ? leadsData.leads : [];
+        renderRows(allLeads);
+      } catch (error) {
+        showError("Admin data load failed. Please refresh.");
+      }
+    }
+
+    searchInput.addEventListener("input", applySearch);
+    refreshBtn.addEventListener("click", loadAdminData);
+
+    logoutBtn.addEventListener("click", async () => {
+      try {
+        await fetch("/auth/logout", { method: "POST" });
+      } finally {
+        window.location.href = "/login";
+      }
+    });
+
+    loadAdminData();
+    setInterval(loadAdminData, 30000);
+  </script>
+</body>
+</html>

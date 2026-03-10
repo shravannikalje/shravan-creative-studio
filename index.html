@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Shravan Creative Studio | Graphic Designer Portfolio</title>
+    <meta name="description" content="Professional graphic designer portfolio for branding, social media design, posters, and web creatives.">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&family=Sora:wght@500;600;700;800&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="scroll-progress" id="scrollProgress" aria-hidden="true"></div>
+
+    <header class="site-header" id="top">
+        <div class="container nav-wrap">
+            <a href="#top" class="brand" aria-label="Shravan Creative Studio">
+                <span class="brand-mark" aria-hidden="true">S</span>
+                <span class="brand-copy">
+                    <span class="brand-name">Shravan</span>
+                    <span class="brand-tag">Creative Studio</span>
+                </span>
+            </a>
+
+            <button class="menu-toggle" id="menuToggle" aria-label="Toggle navigation" aria-controls="mainNav" aria-expanded="false">
+                ☰
+            </button>
+
+            <nav class="main-nav" id="mainNav">
+                <a href="#services">Services</a>
+                <a href="#work">Work</a>
+                <a href="#pricing">Pricing</a>
+                <a href="#estimator">Estimator</a>
+                <a href="#about">About</a>
+                <a href="#faq">FAQ</a>
+                <a href="#custom">Custom</a>
+                <a href="#contact">Contact</a>
+                <button class="theme-toggle" id="themeToggle" type="button" aria-pressed="false">White Block Mode</button>
+                <a href="#" class="btn btn-whatsapp nav-cta" data-whatsapp="quick">WhatsApp</a>
+            </nav>
+        </div>
+    </header>
+
+    <main>
+        <section class="hero section">
+            <div class="container hero-grid">
+                <div class="hero-copy reveal">
+                    <p class="badge">Freelance Graphic Designer</p>
+                    <h1>Designs that make your <span>brand unforgettable</span>.</h1>
+                    <p class="hero-text">
+                        I help businesses stand out with strategic branding, social creatives, posters, packaging,
+                        and high-converting visual content.
+                    </p>
+                    <div class="hero-actions">
+                        <a href="#work" class="btn btn-primary">View Portfolio</a>
+                        <a href="#" class="btn btn-outline" data-whatsapp="quick">Let's chat on WhatsApp</a>
+                    </div>
+                    <div class="hero-stats">
+                        <div>
+                            <h3>120+</h3>
+                            <p>Projects Delivered</p>
+                        </div>
+                        <div>
+                            <h3>95%</h3>
+                            <p>Repeat Clients</p>
+                        </div>
+                        <div>
+                            <h3>5+ yrs</h3>
+                            <p>Design Experience</p>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="hero-card reveal">
+                    <h2>Current Focus</h2>
+                    <ul>
+                        <li>Brand Identity Systems</li>
+                        <li>Social Media Creatives</li>
+                        <li>Website & Landing Page Visuals</li>
+                        <li>Print Collateral & Packaging</li>
+                    </ul>
+                    <p>Need urgent design? Same-day turnaround available for selected tasks.</p>
+
+                    <div class="live-status" id="liveStatusCard" aria-live="polite">
+                        <div class="live-head">
+                            <span class="live-dot" id="liveDot"></span>
+                            <strong id="liveStatusText">Checking availability...</strong>
+                        </div>
+                        <p id="liveTime">Studio Time: --:--</p>
+                        <p id="liveWindow">Response Window: --</p>
+                        <p id="liveProjects">Active Projects: --</p>
+                        <p id="liveQueue">Live Queue: --</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="trusted section-small">
+            <div class="container trusted-row">
+                <p>Trusted by startups, local businesses, and creators</p>
+                <div class="trusted-tags">
+                    <span>Branding</span>
+                    <span>Social Media</span>
+                    <span>Print Design</span>
+                    <span>UI Visuals</span>
+                    <span>Ad Creatives</span>
+                </div>
+            </div>
+        </section>
+
+        <section class="section" id="services">
+            <div class="container">
+                <div class="section-head reveal">
+                    <p class="eyebrow">What I Offer</p>
+                    <h2>Professional design services for growth</h2>
+                </div>
+
+                <div class="card-grid">
+                    <article class="service-card reveal">
+                        <h3>Brand Identity</h3>
+                        <p>Logo design, color systems, typography, and complete brand guidelines.</p>
+                    </article>
+                    <article class="service-card reveal">
+                        <h3>Social Media Kits</h3>
+                        <p>Instagram post templates, story creatives, and ad-ready campaign graphics.</p>
+                    </article>
+                    <article class="service-card reveal">
+                        <h3>Marketing Creatives</h3>
+                        <p>Posters, flyers, brochures, banners, and high-converting promotional visuals.</p>
+                    </article>
+                    <article class="service-card reveal">
+                        <h3>Web Visual Design</h3>
+                        <p>Landing page sections, UI mockups, and conversion-first web graphics.</p>
+                    </article>
+                </div>
+            </div>
+        </section>
+
+        <section class="section alt" id="work">
+            <div class="container">
+                <div class="section-head reveal">
+                    <p class="eyebrow">Featured Projects</p>
+                    <h2>Selected work that delivers impact</h2>
+                </div>
+
+                <div class="portfolio-filters reveal">
+                    <button class="filter-btn active" data-filter="all">All</button>
+                    <button class="filter-btn" data-filter="branding">Branding</button>
+                    <button class="filter-btn" data-filter="social">Social</button>
+                    <button class="filter-btn" data-filter="web">Web</button>
+                    <button class="filter-btn" data-filter="print">Print</button>
+                </div>
+
+                <div class="portfolio-grid" id="portfolioGrid">
+                    <article class="project-card reveal" data-category="branding">
+                        <div class="project-thumb gradient-1"></div>
+                        <div class="project-body">
+                            <h3>Nova Café Rebrand</h3>
+                            <p>Full brand refresh with logo, menu assets, and packaging style guide.</p>
+                        </div>
+                    </article>
+
+                    <article class="project-card reveal" data-category="social">
+                        <div class="project-thumb gradient-2"></div>
+                        <div class="project-body">
+                            <h3>Fitness Campaign Creatives</h3>
+                            <p>30-day social media campaign with ad creatives and story templates.</p>
+                        </div>
+                    </article>
+
+                    <article class="project-card reveal" data-category="web">
+                        <div class="project-thumb gradient-3"></div>
+                        <div class="project-body">
+                            <h3>Startup Landing Visuals</h3>
+                            <p>Modern visual system for hero sections, icons, and conversion CTAs.</p>
+                        </div>
+                    </article>
+
+                    <article class="project-card reveal" data-category="print">
+                        <div class="project-thumb gradient-4"></div>
+                        <div class="project-body">
+                            <h3>Event Poster Series</h3>
+                            <p>Bold poster design set crafted for on-ground promotions and social shares.</p>
+                        </div>
+                    </article>
+
+                    <article class="project-card reveal" data-category="print">
+                        <div class="project-thumb poster-art">
+                            <span class="poster-chip">Featured</span>
+                            <h4>GRAPHIC<br>DESIGN<br>POSTER</h4>
+                        </div>
+                        <div class="project-body">
+                            <h3>Brand Launch Poster</h3>
+                            <p>Premium poster concept for product launch campaigns and social ad promotions.</p>
+                        </div>
+                    </article>
+
+                    <article class="project-card reveal" data-category="branding">
+                        <div class="project-thumb gradient-5"></div>
+                        <div class="project-body">
+                            <h3>E-commerce Packaging</h3>
+                            <p>Packaging concept with premium product labels and insert cards.</p>
+                        </div>
+                    </article>
+
+                    <article class="project-card reveal" data-category="social">
+                        <div class="project-thumb gradient-6"></div>
+                        <div class="project-body">
+                            <h3>Restaurant Promo Kit</h3>
+                            <p>Weekly offer creatives for reels, stories, and menu promotions.</p>
+                        </div>
+                    </article>
+                </div>
+            </div>
+        </section>
+
+        <section class="section" id="testimonials">
+            <div class="container">
+                <div class="section-head reveal">
+                    <p class="eyebrow">Client Love</p>
+                    <h2>What clients say about working with me</h2>
+                </div>
+
+                <div class="testimonial-grid">
+                    <article class="testimonial-card reveal">
+                        <p class="stars" aria-label="5 out of 5 stars">★★★★★</p>
+                        <p>
+                            Shravan completely transformed our brand look. The designs were clean, premium,
+                            and perfect for our launch campaign.
+                        </p>
+                        <h3>Rutuja Patil</h3>
+                        <span>Founder, Nova Café</span>
+                    </article>
+
+                    <article class="testimonial-card reveal">
+                        <p class="stars" aria-label="5 out of 5 stars">★★★★★</p>
+                        <p>
+                            Fast delivery, creative ideas, and very smooth communication. Our social engagement
+                            improved right after using his creatives.
+                        </p>
+                        <h3>Aman Shaikh</h3>
+                        <span>Marketing Lead, FitCore</span>
+                    </article>
+
+                    <article class="testimonial-card reveal">
+                        <p class="stars" aria-label="5 out of 5 stars">★★★★★</p>
+                        <p>
+                            Professional from brief to final files. Every revision was handled quickly and the
+                            final poster set looked amazing.
+                        </p>
+                        <h3>Neha Deshmukh</h3>
+                        <span>Event Manager, Urban Beats</span>
+                    </article>
+                </div>
+            </div>
+        </section>
+
+        <section class="section alt" id="pricing">
+            <div class="container">
+                <div class="section-head reveal">
+                    <p class="eyebrow">Pricing</p>
+                    <h2>Flexible packages for every business stage</h2>
+                </div>
+
+                <div class="pricing-grid">
+                    <article class="price-card reveal">
+                        <p class="plan-badge">Starter</p>
+                        <h3>₹4,999</h3>
+                        <p class="plan-desc">Best for new businesses getting started with visuals.</p>
+                        <ul class="plan-list">
+                            <li>1 Design Concept</li>
+                            <li>3 Revisions</li>
+                            <li>Social Media Post Set (5)</li>
+                            <li>Delivery in 3 Days</li>
+                        </ul>
+                        <a href="#" class="btn btn-outline btn-full" data-whatsapp="package" data-package="Starter" data-price="₹4,999">Choose Starter</a>
+                    </article>
+
+                    <article class="price-card featured-plan reveal">
+                        <p class="plan-badge">Growth</p>
+                        <h3>₹11,999</h3>
+                        <p class="plan-desc">Perfect for growing brands needing regular creative support.</p>
+                        <ul class="plan-list">
+                            <li>Brand Creative Direction</li>
+                            <li>Social Media Pack (15)</li>
+                            <li>Poster / Ad Creatives (4)</li>
+                            <li>Priority Support + Fast Revisions</li>
+                        </ul>
+                        <a href="#" class="btn btn-primary btn-full" data-whatsapp="package" data-package="Growth" data-price="₹11,999">Choose Growth</a>
+                    </article>
+
+                    <article class="price-card reveal">
+                        <p class="plan-badge">Premium</p>
+                        <h3>₹24,999</h3>
+                        <p class="plan-desc">Full-service package for campaigns, launches, and scaling brands.</p>
+                        <ul class="plan-list">
+                            <li>Complete Brand + Campaign Kit</li>
+                            <li>Social Media Pack (30)</li>
+                            <li>Landing Page Visual Sections</li>
+                            <li>Dedicated Consultation Support</li>
+                        </ul>
+                        <a href="#" class="btn btn-outline btn-full" data-whatsapp="package" data-package="Premium" data-price="₹24,999">Choose Premium</a>
+                    </article>
+                </div>
+            </div>
+        </section>
+
+        <section class="section" id="estimator">
+            <div class="container">
+                <div class="section-head reveal">
+                    <p class="eyebrow">Real-Time Quote</p>
+                    <h2>Get an instant project estimate in seconds</h2>
+                </div>
+
+                <div class="estimator-grid">
+                    <form class="estimator-form reveal" id="estimatorForm">
+                        <label for="estService">Service Type</label>
+                        <select id="estService" name="estService">
+                            <option value="brand">Brand Identity</option>
+                            <option value="social">Social Media Creatives</option>
+                            <option value="poster">Poster / Print Design</option>
+                            <option value="web">Web Visual Design</option>
+                        </select>
+
+                        <label for="estDelivery">Delivery Speed</label>
+                        <select id="estDelivery" name="estDelivery">
+                            <option value="standard">Standard (3-5 days)</option>
+                            <option value="express">Express (48 hours)</option>
+                            <option value="priority">Priority (24 hours)</option>
+                        </select>
+
+                        <label for="estRevisions">Revisions</label>
+                        <input type="range" id="estRevisions" name="estRevisions" min="1" max="8" value="3">
+                        <p class="mini-meta">Selected revisions: <strong id="revCount">3</strong></p>
+
+                        <label for="estQuantity">No. of Creatives</label>
+                        <input type="number" id="estQuantity" name="estQuantity" min="1" max="50" value="5">
+
+                        <label class="switch-row" for="estAssets">
+                            <input type="checkbox" id="estAssets" name="estAssets" checked>
+                            <span>Brand assets ready (logo/colors available)</span>
+                        </label>
+                    </form>
+
+                    <div class="estimator-result reveal" id="estimateResult">
+                        <p class="eyebrow">Estimated Budget</p>
+                        <h3 id="estimateAmount">₹0</h3>
+                        <p id="estimateBreakdown">Calculating your project quote...</p>
+                        <ul class="estimate-meta" id="estimateMeta"></ul>
+                        <a href="#" class="btn btn-whatsapp btn-full" id="sendEstimateBtn" data-whatsapp="estimate">Send This Estimate on WhatsApp</a>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="section" id="about">
+            <div class="container about-grid">
+                <div class="about-card reveal">
+                    <p class="eyebrow">About Me</p>
+                    <h2>I blend strategy with aesthetics to grow your brand.</h2>
+                    <p>
+                        I'm Shravan, a graphic designer focused on clean visuals, storytelling, and conversion-driven design.
+                        From startup launches to campaign creatives, I craft designs that look premium and perform strongly.
+                    </p>
+                    <a href="#" class="btn btn-outline" data-whatsapp="quick">Work with me</a>
+                </div>
+
+                <div class="timeline reveal">
+                    <h3>How we work</h3>
+                    <ol>
+                        <li><strong>Brief</strong> - You share your requirement on WhatsApp.</li>
+                        <li><strong>Concept</strong> - I send initial ideas and mood direction.</li>
+                        <li><strong>Refine</strong> - Revisions with quick feedback loops.</li>
+                        <li><strong>Deliver</strong> - Final files in all required formats.</li>
+                    </ol>
+                </div>
+            </div>
+        </section>
+
+        <section class="section" id="faq">
+            <div class="container">
+                <div class="section-head reveal">
+                    <p class="eyebrow">FAQ</p>
+                    <h2>Common questions clients ask before starting</h2>
+                </div>
+
+                <div class="faq-list reveal">
+                    <details class="faq-item" open>
+                        <summary>How quickly can you deliver designs?</summary>
+                        <p>Most tasks are delivered in 2–4 days. Urgent projects can be handled with priority support.</p>
+                    </details>
+
+                    <details class="faq-item">
+                        <summary>Do you provide source files?</summary>
+                        <p>Yes, final deliverables include high-quality exports and source files based on project scope.</p>
+                    </details>
+
+                    <details class="faq-item">
+                        <summary>How many revisions are included?</summary>
+                        <p>Revisions depend on the selected package. Additional revisions can be added anytime.</p>
+                    </details>
+
+                    <details class="faq-item">
+                        <summary>Can we work monthly for regular creatives?</summary>
+                        <p>Absolutely. I offer monthly creative retainers for social media and campaign design support.</p>
+                    </details>
+                </div>
+            </div>
+        </section>
+
+        <section class="section-small cta-strip">
+            <div class="container">
+                <div class="cta-wrap reveal">
+                    <div>
+                        <p class="eyebrow">Ready to Start?</p>
+                        <h2>Let’s craft visuals that make your brand stand out.</h2>
+                    </div>
+                    <div class="cta-actions">
+                        <a href="#" class="btn btn-whatsapp" data-whatsapp="quick">Start Project on WhatsApp</a>
+                        <a href="#pricing" class="btn btn-outline">View Packages</a>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="section" id="custom">
+            <div class="container">
+                <div class="section-head reveal">
+                    <p class="eyebrow">Editable Area</p>
+                    <h2>Update this block by editing one file only</h2>
+                </div>
+
+                <div class="custom-host reveal" id="customContentMount" aria-live="polite">
+                    <p class="custom-placeholder">Loading your custom content...</p>
+                </div>
+            </div>
+        </section>
+
+        <section class="section alt" id="contact">
+            <div class="container contact-grid">
+                <div class="contact-copy reveal">
+                    <p class="eyebrow">Let’s Connect</p>
+                    <h2>Send your brief and I’ll reply on WhatsApp</h2>
+                    <p>
+                        Fill this quick form. On submit, WhatsApp will open with your message details ready to send.
+                    </p>
+
+                    <div class="contact-badges">
+                        <span>Fast Reply</span>
+                        <span>Professional Output</span>
+                        <span>Affordable Packages</span>
+                    </div>
+                </div>
+
+                <form class="contact-form reveal" id="whatsappForm">
+                    <label for="name">Your Name</label>
+                    <input type="text" id="name" name="name" placeholder="Enter your name" required>
+
+                    <label for="email">Email</label>
+                    <input type="email" id="email" name="email" placeholder="Enter your email" required>
+
+                    <label for="service">Service Needed</label>
+                    <select id="service" name="service" required>
+                        <option value="" selected disabled>Select service</option>
+                        <option value="Brand Identity">Brand Identity</option>
+                        <option value="Social Media Creatives">Social Media Creatives</option>
+                        <option value="Poster / Print Design">Poster / Print Design</option>
+                        <option value="Web Visual Design">Web Visual Design</option>
+                    </select>
+
+                    <label for="budget">Budget Range</label>
+                    <select id="budget" name="budget" required>
+                        <option value="" selected disabled>Select budget</option>
+                        <option value="Under ₹5,000">Under ₹5,000</option>
+                        <option value="₹5,000 - ₹15,000">₹5,000 - ₹15,000</option>
+                        <option value="₹15,000 - ₹30,000">₹15,000 - ₹30,000</option>
+                        <option value="₹30,000+">₹30,000+</option>
+                    </select>
+
+                    <label for="details">Project Details</label>
+                    <textarea id="details" name="details" rows="4" placeholder="Tell me about your project" required></textarea>
+
+                    <button type="submit" class="btn btn-primary btn-full">Send to WhatsApp</button>
+                    <p class="form-note">WhatsApp opens with prefilled message on submit.</p>
+                </form>
+            </div>
+        </section>
+    </main>
+
+    <a href="#" class="floating-wa" data-whatsapp="quick" aria-label="Chat on WhatsApp">💬</a>
+    <button class="back-to-top" id="backToTop" aria-label="Back to top">↑</button>
+
+    <footer class="site-footer">
+        <div class="container footer-wrap">
+            <p>© <span id="year"></span> Shravan Nikalaje Creative Studio. All rights reserved.</p>
+            <a href="#" data-whatsapp="quick">Start a project on WhatsApp</a>
+        </div>
+    </footer>
+
+    <script src="script.js"></script>
+</body>
+</html>

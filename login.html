@@ -1,0 +1,215 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Password Access | Shravan Creative Studio</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+    <style>
+        :root {
+            --bg1: #0b1020;
+            --bg2: #151e3b;
+            --card: rgba(255, 255, 255, 0.08);
+            --stroke: rgba(255, 255, 255, 0.16);
+            --text: #ecf3ff;
+            --muted: #b8c3df;
+            --danger: #ff6b6b;
+        }
+
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+        }
+
+        body {
+            min-height: 100vh;
+            font-family: "Manrope", system-ui, sans-serif;
+            color: var(--text);
+            background:
+                radial-gradient(circle at 10% 10%, rgba(99, 102, 241, 0.32), transparent 40%),
+                radial-gradient(circle at 90% 25%, rgba(16, 185, 129, 0.22), transparent 35%),
+                linear-gradient(155deg, var(--bg1), var(--bg2));
+            display: grid;
+            place-items: center;
+            padding: 1rem;
+        }
+
+        .card {
+            width: min(520px, 96vw);
+            border: 1px solid var(--stroke);
+            border-radius: 18px;
+            background: var(--card);
+            -webkit-backdrop-filter: blur(12px);
+            backdrop-filter: blur(12px);
+            padding: 1.4rem;
+            box-shadow: 0 22px 42px rgba(6, 10, 24, 0.5);
+        }
+
+        h1 {
+            font-size: clamp(1.3rem, 3vw, 2rem);
+            margin-bottom: 0.35rem;
+        }
+
+        .sub {
+            color: var(--muted);
+            margin-bottom: 0.95rem;
+            line-height: 1.5;
+        }
+
+        .hint {
+            font-size: 0.92rem;
+            color: #d7e4ff;
+            margin-bottom: 0.95rem;
+        }
+
+        .field {
+            display: grid;
+            gap: 0.45rem;
+            margin-top: 0.7rem;
+        }
+
+        .field label {
+            font-size: 0.9rem;
+            color: #d7e4ff;
+            font-weight: 600;
+        }
+
+        .field input {
+            border: 1px solid var(--stroke);
+            background: rgba(255, 255, 255, 0.08);
+            color: var(--text);
+            border-radius: 10px;
+            padding: 0.75rem 0.85rem;
+            outline: none;
+            font-size: 0.95rem;
+        }
+
+        .field input:focus {
+            border-color: rgba(109, 125, 255, 0.8);
+        }
+
+        .btn {
+            margin-top: 0.9rem;
+            border: 1px solid transparent;
+            background: linear-gradient(120deg, #6d7dff, #5364ea);
+            color: #fff;
+            border-radius: 10px;
+            padding: 0.72rem 0.85rem;
+            cursor: pointer;
+            font-size: 0.94rem;
+            font-weight: 700;
+            width: 100%;
+        }
+
+        .btn:disabled {
+            opacity: 0.65;
+            cursor: wait;
+        }
+
+        .badge {
+            display: inline-flex;
+            align-items: center;
+            padding: 0.35rem 0.65rem;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            border-radius: 999px;
+            font-size: 0.8rem;
+            color: #dbe5ff;
+            margin-bottom: 0.7rem;
+            background: rgba(255, 255, 255, 0.06);
+        }
+
+        .error {
+            margin: 0.8rem 0;
+            font-size: 0.92rem;
+            color: #ffe4e4;
+            border: 1px solid rgba(255, 107, 107, 0.55);
+            background: rgba(255, 107, 107, 0.13);
+            border-radius: 10px;
+            padding: 0.65rem 0.75rem;
+        }
+
+        .hidden {
+            display: none;
+        }
+
+        .footer-note {
+            margin-top: 1rem;
+            font-size: 0.84rem;
+            color: var(--muted);
+        }
+    </style>
+</head>
+<body>
+    <div class="card">
+        <p class="badge">Private Website Access</p>
+        <h1>Access with Password</h1>
+        <p class="sub">Gmail login बंद आहे. Password टाकल्यावर website access मिळेल.</p>
+        <p class="hint"><strong>Tip:</strong> Owner ने दिलेला password वापरा.</p>
+
+        <div id="errorBox" class="error hidden"></div>
+
+        <form id="passwordForm">
+            <div class="field">
+                <label for="accessPassword">Website Password</label>
+                <input id="accessPassword" name="accessPassword" type="password" placeholder="Enter password" required>
+            </div>
+
+            <button class="btn" id="loginBtn" type="submit">Login</button>
+        </form>
+
+        <p class="footer-note">जर login होत नसेल तर owner ला password verify करायला सांगा.</p>
+    </div>
+
+    <script>
+        const passwordForm = document.getElementById("passwordForm");
+        const loginBtn = document.getElementById("loginBtn");
+        const accessPassword = document.getElementById("accessPassword");
+        const errorBox = document.getElementById("errorBox");
+
+        function showError(message) {
+            errorBox.textContent = message;
+            errorBox.classList.remove("hidden");
+        }
+
+        passwordForm.addEventListener("submit", async (event) => {
+            event.preventDefault();
+            errorBox.classList.add("hidden");
+
+            const password = accessPassword.value.trim();
+            if (!password) {
+                showError("Password टाका.");
+                return;
+            }
+
+            loginBtn.disabled = true;
+            loginBtn.textContent = "Checking...";
+
+            try {
+                const res = await fetch("/auth/password", {
+                    method: "POST",
+                    headers: {
+                        "Content-Type": "application/json"
+                    },
+                    body: JSON.stringify({ password })
+                });
+
+                const data = await res.json();
+                if (!res.ok || !data.ok) {
+                    showError(data.error || "Login failed");
+                    return;
+                }
+
+                window.location.href = "/";
+            } catch (error) {
+                showError("Network error while login. Try again.");
+            } finally {
+                loginBtn.disabled = false;
+                loginBtn.textContent = "Login";
+            }
+        });
+    </script>
+</body>
+</html>
