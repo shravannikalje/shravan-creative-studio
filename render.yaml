@@ -3,8 +3,11 @@ services:
     name: shravan-creative-studio
     runtime: node
     plan: free
+    branch: main
     buildCommand: npm install
     startCommand: npm start
+    healthCheckPath: /healthz
+    autoDeployTrigger: commit
     envVars:
       - key: AUTH_MODE
         value: password
