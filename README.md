@@ -2,6 +2,10 @@
 
 Shravan Creative Studio portfolio website with password login, admin panel, custom mobile-only section, lead tracking, and visitor analytics.
 
+[![Deploy to Render](https://render.com/images/deploy-to-render-button.svg)](https://render.com/deploy?repo=https://github.com/shravannikalje/shravan-creative-studio)
+
+Direct deploy link: `https://dashboard.render.com/blueprint/new?repo=https://github.com/shravannikalje/shravan-creative-studio`
+
 ## Repo details
 
 - **Repository name:** `shravan-creative-studio`
