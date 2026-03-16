@@ -1151,6 +1151,16 @@ body.white-mode .custom-highlight {
 	font-size: 0.9rem;
 }
 
+.footer-copy {
+	display: grid;
+	gap: 0.2rem;
+}
+
+.footer-copy p {
+	margin: 0;
+	line-height: 1.5;
+}
+
 .footer-wrap a {
 	color: #c6d3ff;
 }
