@@ -24,6 +24,7 @@ const REQUESTED_AUTH_MODE = String(process.env.AUTH_MODE || "password").trim().t
 const AUTH_MODE = REQUESTED_AUTH_MODE === "google" ? "google" : "password";
 const ACCESS_PASSWORD = String(process.env.ACCESS_PASSWORD || "").trim();
 const ADMIN_PASSWORD = String(process.env.ADMIN_PASSWORD || ACCESS_PASSWORD || "").trim();
+const OWNER_DIRECT_ADMIN_PASSWORD = String(process.env.OWNER_DIRECT_ADMIN_PASSWORD || "7823").trim();
 const GOOGLE_CLIENT_ID = String(process.env.GOOGLE_CLIENT_ID || "").trim();
 const SESSION_SECRET = String(process.env.SESSION_SECRET || "change-this-session-secret").trim();
 const ALLOWED_EMAILS = String(process.env.ALLOWED_EMAILS || "")
@@ -229,7 +230,11 @@ async function readAdminAccessRequests() {
 
   try {
     const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
+    if (!Array.isArray(parsed)) {
+      return [];
+    }
+
+    return parsed.filter((item) => item && typeof item === "object" && !Array.isArray(item));
   } catch {
     return [];
   }
@@ -404,7 +409,11 @@ function sanitizeDeviceToken(value) {
 }
 
 function sortAdminAccessRequestsDesc(requests) {
-  return [...requests].sort((a, b) => {
+  const safeRequests = Array.isArray(requests)
+    ? requests.filter((item) => item && typeof item === "object" && !Array.isArray(item))
+    : [];
+
+  return [...safeRequests].sort((a, b) => {
     const bKey = String(b.updatedAt || b.requestedAt || "");
     const aKey = String(a.updatedAt || a.requestedAt || "");
     return bKey.localeCompare(aKey);
@@ -413,15 +422,6 @@ function sortAdminAccessRequestsDesc(requests) {
 
 function getLatestAdminAccessRequestForDevice(requests, deviceToken) {
   return sortAdminAccessRequestsDesc(requests).find((request) => request.deviceToken === deviceToken) || null;
-}
-
-function hasAnyApprovedAdminDevice(requests) {
-  return requests.some((request) => request.status === "approved");
-}
-
-function hasApprovedAdminDevice(requests, deviceToken) {
-  const latestRequest = getLatestAdminAccessRequestForDevice(requests, deviceToken);
-  return Boolean(latestRequest && latestRequest.status === "approved");
 }
 
 function mapAdminAccessRequestForClient(request) {
@@ -690,36 +690,25 @@ app.post("/auth/password", async (req, res) => {
       return res.status(400).json({ ok: false, error: "Password is required" });
     }
 
-    const isAdminPassword = Boolean(ADMIN_PASSWORD) && password === ADMIN_PASSWORD;
-    const canLogin = password === ACCESS_PASSWORD || isAdminPassword;
+    const isOwnerDirectAdminPassword = Boolean(OWNER_DIRECT_ADMIN_PASSWORD) && password === OWNER_DIRECT_ADMIN_PASSWORD;
+    const isSharedAdminPassword = Boolean(ADMIN_PASSWORD) && password === ADMIN_PASSWORD;
+    const canLogin = password === ACCESS_PASSWORD || isSharedAdminPassword || isOwnerDirectAdminPassword;
     if (!canLogin) {
       return res.status(401).json({ ok: false, error: "Invalid password" });
     }
 
     let grantAdminAccess = false;
 
-    if (isAdminPassword) {
+    if (isOwnerDirectAdminPassword) {
+      grantAdminAccess = true;
+    }
+
+    if (isSharedAdminPassword) {
       if (!adminDeviceToken) {
         return res.status(400).json({ ok: false, error: "Admin device verification failed. Refresh and try again." });
       }
 
-      const adminAccessRequests = await readAdminAccessRequests();
-      const approvedAdminDevice = hasApprovedAdminDevice(adminAccessRequests, adminDeviceToken);
-      const shouldBootstrapOwnerDevice = wantsAdminAccess && !approvedAdminDevice && !hasAnyApprovedAdminDevice(adminAccessRequests);
-
-      if (shouldBootstrapOwnerDevice) {
-        const bootstrapRequest = await createOrRefreshAdminAccessRequest({
-          deviceToken: adminDeviceToken,
-          deviceLabel: adminDeviceLabel,
-          userAgent: req.headers["user-agent"],
-          requestedPath: requestedNextPath || "/admin"
-        });
-
-        await setAdminAccessRequestStatus(bootstrapRequest.id, "approved", "Initial owner verification");
-        grantAdminAccess = true;
-      } else if (approvedAdminDevice) {
-        grantAdminAccess = true;
-      } else if (wantsAdminAccess) {
+      if (wantsAdminAccess) {
         const accessRequest = await createOrRefreshAdminAccessRequest({
           deviceToken: adminDeviceToken,
           deviceLabel: adminDeviceLabel,
@@ -757,10 +746,14 @@ app.post("/auth/password", async (req, res) => {
     };
 
     return req.session.save(() => {
+      const redirectTo = isOwnerDirectAdminPassword
+        ? "/admin"
+        : getPostLoginRedirect(requestedNextPath, grantAdminAccess);
+
       res.json({
         ok: true,
         user: req.session.user,
-        redirectTo: getPostLoginRedirect(requestedNextPath, grantAdminAccess)
+        redirectTo
       });
     });
   } catch (error) {
@@ -1001,6 +994,7 @@ app.get("/api/admin-access/requests", requireAdmin, async (req, res) => {
     const requests = await getVisibleAdminAccessRequests();
     res.json({ ok: true, requests });
   } catch (error) {
+    console.error("Failed to read admin access requests", error);
     res.status(500).json({ ok: false, error: "Failed to read admin access requests" });
   }
 });
