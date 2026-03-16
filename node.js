@@ -16,6 +16,7 @@ const DATA_DIR = path.join(ROOT_DIR, "data");
 const LEADS_FILE = path.join(DATA_DIR, "leads.json");
 const CUSTOM_DEVICES_FILE = path.join(DATA_DIR, "custom-devices.json");
 const VISITORS_FILE = path.join(DATA_DIR, "visitors.json");
+const ADMIN_ACCESS_REQUESTS_FILE = path.join(DATA_DIR, "admin-access-requests.json");
 const LOGIN_FILE = path.join(ROOT_DIR, "login.html");
 const ADMIN_FILE = path.join(ROOT_DIR, "admin.html");
 
@@ -211,6 +212,33 @@ async function ensureVisitorStorage() {
   }
 }
 
+async function ensureAdminAccessRequestStorage() {
+  await fs.mkdir(DATA_DIR, { recursive: true });
+
+  try {
+    await fs.access(ADMIN_ACCESS_REQUESTS_FILE);
+  } catch {
+    await fs.writeFile(ADMIN_ACCESS_REQUESTS_FILE, "[]", "utf8");
+  }
+}
+
+async function readAdminAccessRequests() {
+  await ensureAdminAccessRequestStorage();
+  const raw = await fs.readFile(ADMIN_ACCESS_REQUESTS_FILE, "utf8");
+
+  try {
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
+
+async function writeAdminAccessRequests(requests) {
+  await ensureAdminAccessRequestStorage();
+  await fs.writeFile(ADMIN_ACCESS_REQUESTS_FILE, JSON.stringify(requests, null, 2), "utf8");
+}
+
 async function readVisitors() {
   await ensureVisitorStorage();
   const raw = await fs.readFile(VISITORS_FILE, "utf8");
@@ -304,15 +332,19 @@ function sanitizeRedirectPath(value) {
   }
 }
 
+function isAdminRedirectPath(value) {
+  return value === "/admin" || value === "/admin.html";
+}
+
 function getPostLoginRedirect(requestedPath, isAdmin = false) {
   const safeNextPath = sanitizeRedirectPath(requestedPath);
 
-  if (safeNextPath === "/admin" || safeNextPath === "/admin.html") {
+  if (isAdminRedirectPath(safeNextPath)) {
     return isAdmin ? "/admin" : "/";
   }
 
   if (!safeNextPath || safeNextPath === "/" || safeNextPath === "/login" || safeNextPath === "/login.html") {
-    return isAdmin ? "/admin" : "/";
+    return "/";
   }
 
   return safeNextPath;
@@ -368,6 +400,97 @@ function isAdminEmail(email) {
 function sanitizeDeviceToken(value) {
   const token = sanitizeText(String(value || ""), 220);
   return /^[a-zA-Z0-9_-]{16,220}$/.test(token) ? token : "";
+}
+
+function sortAdminAccessRequestsDesc(requests) {
+  return [...requests].sort((a, b) => {
+    const bKey = String(b.updatedAt || b.requestedAt || "");
+    const aKey = String(a.updatedAt || a.requestedAt || "");
+    return bKey.localeCompare(aKey);
+  });
+}
+
+function getLatestAdminAccessRequestForDevice(requests, deviceToken) {
+  return sortAdminAccessRequestsDesc(requests).find((request) => request.deviceToken === deviceToken) || null;
+}
+
+function hasAnyApprovedAdminDevice(requests) {
+  return requests.some((request) => request.status === "approved");
+}
+
+function hasApprovedAdminDevice(requests, deviceToken) {
+  const latestRequest = getLatestAdminAccessRequestForDevice(requests, deviceToken);
+  return Boolean(latestRequest && latestRequest.status === "approved");
+}
+
+function mapAdminAccessRequestForClient(request) {
+  return {
+    id: request.id,
+    deviceLabel: request.deviceLabel,
+    requestedPath: request.requestedPath,
+    status: request.status,
+    requestedAt: request.requestedAt,
+    reviewedAt: request.reviewedAt,
+    reviewer: request.reviewer,
+    userAgent: request.userAgent
+  };
+}
+
+async function createOrRefreshAdminAccessRequest({ deviceToken, deviceLabel, userAgent, requestedPath }) {
+  const requests = await readAdminAccessRequests();
+  const now = new Date().toISOString();
+  const latestRequest = getLatestAdminAccessRequestForDevice(requests, deviceToken);
+
+  if (latestRequest && latestRequest.status === "pending") {
+    latestRequest.deviceLabel = sanitizeText(deviceLabel, 140) || latestRequest.deviceLabel || "Unknown device";
+    latestRequest.userAgent = sanitizeText(userAgent, 300) || latestRequest.userAgent || "";
+    latestRequest.requestedPath = sanitizeRedirectPath(requestedPath) || latestRequest.requestedPath || "/admin";
+    latestRequest.updatedAt = now;
+    await writeAdminAccessRequests(requests);
+    return latestRequest;
+  }
+
+  const request = {
+    id: `adminreq_${Date.now()}_${Math.floor(Math.random() * 100000)}`,
+    deviceToken,
+    deviceLabel: sanitizeText(deviceLabel, 140) || "Unknown device",
+    requestedPath: sanitizeRedirectPath(requestedPath) || "/admin",
+    status: "pending",
+    userAgent: sanitizeText(userAgent, 300),
+    requestedAt: now,
+    updatedAt: now,
+    reviewedAt: "",
+    reviewer: ""
+  };
+
+  requests.push(request);
+  await writeAdminAccessRequests(requests);
+  return request;
+}
+
+async function setAdminAccessRequestStatus(requestId, nextStatus, reviewer = "Owner") {
+  const requests = await readAdminAccessRequests();
+  const request = requests.find((item) => item.id === requestId);
+
+  if (!request) {
+    return null;
+  }
+
+  const now = new Date().toISOString();
+  request.status = nextStatus;
+  request.updatedAt = now;
+  request.reviewedAt = now;
+  request.reviewer = sanitizeText(reviewer, 100) || "Owner";
+
+  await writeAdminAccessRequests(requests);
+  return request;
+}
+
+async function getVisibleAdminAccessRequests(limit = 12) {
+  const requests = await readAdminAccessRequests();
+  return sortAdminAccessRequestsDesc(requests)
+    .slice(0, limit)
+    .map(mapAdminAccessRequestForClient);
 }
 
 function getCustomDeviceToken(req) {
@@ -426,7 +549,7 @@ function requireAdmin(req, res, next) {
     if (req.path.startsWith("/api/")) {
       return res.status(403).json({ ok: false, error: "Admin access required" });
     }
-    return res.status(403).send("Admin access required");
+    return redirectToLogin(req, res);
   }
 
   return next();
@@ -477,8 +600,11 @@ app.get("/healthz", (req, res) => {
 });
 
 app.get(["/login", "/login.html"], async (req, res) => {
-  if (req.session?.user) {
-    const redirectTo = getPostLoginRedirect(req.query?.next, Boolean(req.session.user.isAdmin));
+  const requestedNextPath = sanitizeRedirectPath(req.query?.next || "");
+  const wantsAdminAccess = isAdminRedirectPath(requestedNextPath);
+
+  if (req.session?.user && (!wantsAdminAccess || req.session.user.isAdmin)) {
+    const redirectTo = getPostLoginRedirect(requestedNextPath, Boolean(req.session.user.isAdmin));
     return res.redirect(redirectTo);
   }
 
@@ -492,7 +618,7 @@ app.get(["/login", "/login.html"], async (req, res) => {
   }
 });
 
-app.post("/auth/password", (req, res) => {
+app.post("/auth/password", async (req, res) => {
   try {
     if (AUTH_MODE !== "password") {
       return res.status(403).json({ ok: false, error: "Password login is disabled" });
@@ -507,21 +633,76 @@ app.post("/auth/password", (req, res) => {
 
     const password = sanitizeText(req.body?.password || "", 120);
     const requestedNextPath = sanitizeRedirectPath(req.body?.next || "");
+    const wantsAdminAccess = isAdminRedirectPath(requestedNextPath);
+    const adminDeviceToken = sanitizeDeviceToken(req.body?.adminDeviceToken || "");
+    const adminDeviceLabel = sanitizeText(req.body?.adminDeviceLabel || "", 140);
     if (!password) {
       return res.status(400).json({ ok: false, error: "Password is required" });
     }
 
-    const isAdmin = Boolean(ADMIN_PASSWORD) && password === ADMIN_PASSWORD;
-    const canLogin = password === ACCESS_PASSWORD || isAdmin;
+    const isAdminPassword = Boolean(ADMIN_PASSWORD) && password === ADMIN_PASSWORD;
+    const canLogin = password === ACCESS_PASSWORD || isAdminPassword;
     if (!canLogin) {
       return res.status(401).json({ ok: false, error: "Invalid password" });
     }
 
+    let grantAdminAccess = false;
+
+    if (isAdminPassword) {
+      if (!adminDeviceToken) {
+        return res.status(400).json({ ok: false, error: "Admin device verification failed. Refresh and try again." });
+      }
+
+      const adminAccessRequests = await readAdminAccessRequests();
+      const approvedAdminDevice = hasApprovedAdminDevice(adminAccessRequests, adminDeviceToken);
+      const shouldBootstrapOwnerDevice = wantsAdminAccess && !approvedAdminDevice && !hasAnyApprovedAdminDevice(adminAccessRequests);
+
+      if (shouldBootstrapOwnerDevice) {
+        const bootstrapRequest = await createOrRefreshAdminAccessRequest({
+          deviceToken: adminDeviceToken,
+          deviceLabel: adminDeviceLabel,
+          userAgent: req.headers["user-agent"],
+          requestedPath: requestedNextPath || "/admin"
+        });
+
+        await setAdminAccessRequestStatus(bootstrapRequest.id, "approved", "Initial owner verification");
+        grantAdminAccess = true;
+      } else if (approvedAdminDevice) {
+        grantAdminAccess = true;
+      } else if (wantsAdminAccess) {
+        const accessRequest = await createOrRefreshAdminAccessRequest({
+          deviceToken: adminDeviceToken,
+          deviceLabel: adminDeviceLabel,
+          userAgent: req.headers["user-agent"],
+          requestedPath: requestedNextPath || "/admin"
+        });
+
+        req.session.pendingAdminAccess = {
+          requestId: accessRequest.id,
+          deviceToken: adminDeviceToken,
+          requestedNextPath: requestedNextPath || "/admin",
+          requestedAt: new Date().toISOString()
+        };
+
+        return req.session.save(() => {
+          res.status(202).json({
+            ok: false,
+            approvalRequired: true,
+            requestId: accessRequest.id,
+            status: accessRequest.status,
+            message: "Owner verification pending"
+          });
+        });
+      }
+    }
+
+    delete req.session.pendingAdminAccess;
+
     req.session.user = {
       email: "password-user@studio.local",
-      name: isAdmin ? "Owner" : "User",
+      name: grantAdminAccess ? "Owner" : "User",
       picture: "",
-      isAdmin,
+      isAdmin: grantAdminAccess,
       authType: "password"
     };
 
@@ -529,11 +710,76 @@ app.post("/auth/password", (req, res) => {
       res.json({
         ok: true,
         user: req.session.user,
-        redirectTo: getPostLoginRedirect(requestedNextPath, isAdmin)
+        redirectTo: getPostLoginRedirect(requestedNextPath, grantAdminAccess)
       });
     });
   } catch (error) {
     return res.status(500).json({ ok: false, error: "Password login failed" });
+  }
+});
+
+app.get("/auth/admin-approval-status", async (req, res) => {
+  try {
+    const requestId = sanitizeText(req.query?.requestId || "", 120);
+    const pendingAdminAccess = req.session?.pendingAdminAccess;
+
+    if (!requestId || !pendingAdminAccess || pendingAdminAccess.requestId !== requestId) {
+      return res.status(404).json({ ok: false, status: "missing", error: "No pending admin approval found" });
+    }
+
+    const requests = await readAdminAccessRequests();
+    const accessRequest = requests.find((request) => (
+      request.id === requestId && request.deviceToken === pendingAdminAccess.deviceToken
+    ));
+
+    if (!accessRequest) {
+      delete req.session.pendingAdminAccess;
+      return req.session.save(() => {
+        res.status(404).json({ ok: false, status: "missing", error: "Admin verify request not found" });
+      });
+    }
+
+    if (accessRequest.status === "approved") {
+      req.session.user = {
+        email: "password-user@studio.local",
+        name: "Owner",
+        picture: "",
+        isAdmin: true,
+        authType: "password"
+      };
+
+      delete req.session.pendingAdminAccess;
+
+      return req.session.save(() => {
+        res.json({
+          ok: true,
+          approved: true,
+          status: "approved",
+          redirectTo: getPostLoginRedirect(pendingAdminAccess.requestedNextPath, true)
+        });
+      });
+    }
+
+    if (accessRequest.status === "rejected") {
+      delete req.session.pendingAdminAccess;
+      return req.session.save(() => {
+        res.status(403).json({
+          ok: false,
+          approved: false,
+          status: "rejected",
+          error: "Owner ने verify नाही केलं. Admin panel access मिळाला नाही."
+        });
+      });
+    }
+
+    return res.json({
+      ok: true,
+      approved: false,
+      status: "pending",
+      message: "Owner verification pending"
+    });
+  } catch (error) {
+    return res.status(500).json({ ok: false, error: "Failed to check admin approval status" });
   }
 });
 
@@ -627,6 +873,7 @@ app.use((req, res, next) => {
     "/login",
     "/login.html",
     "/auth/password",
+    "/auth/admin-approval-status",
     "/auth/google",
     "/auth/me",
     "/auth/logout",
@@ -651,6 +898,45 @@ app.use((req, res, next) => {
 
 app.get("/api/live-status", (req, res) => {
   res.json(getStudioStatus());
+});
+
+app.get("/api/admin-access/requests", requireAdmin, async (req, res) => {
+  try {
+    const requests = await getVisibleAdminAccessRequests();
+    res.json({ ok: true, requests });
+  } catch (error) {
+    res.status(500).json({ ok: false, error: "Failed to read admin access requests" });
+  }
+});
+
+app.post("/api/admin-access/requests/:requestId/verify", requireAdmin, async (req, res) => {
+  try {
+    const requestId = sanitizeText(req.params.requestId || "", 120);
+    const updatedRequest = await setAdminAccessRequestStatus(requestId, "approved", req.session?.user?.email || "Owner");
+
+    if (!updatedRequest) {
+      return res.status(404).json({ ok: false, error: "Admin access request not found" });
+    }
+
+    res.json({ ok: true, request: mapAdminAccessRequestForClient(updatedRequest) });
+  } catch (error) {
+    res.status(500).json({ ok: false, error: "Failed to verify admin access request" });
+  }
+});
+
+app.post("/api/admin-access/requests/:requestId/unverify", requireAdmin, async (req, res) => {
+  try {
+    const requestId = sanitizeText(req.params.requestId || "", 120);
+    const updatedRequest = await setAdminAccessRequestStatus(requestId, "rejected", req.session?.user?.email || "Owner");
+
+    if (!updatedRequest) {
+      return res.status(404).json({ ok: false, error: "Admin access request not found" });
+    }
+
+    res.json({ ok: true, request: mapAdminAccessRequestForClient(updatedRequest) });
+  } catch (error) {
+    res.status(500).json({ ok: false, error: "Failed to unverify admin access request" });
+  }
 });
 
 app.get("/api/custom-access", async (req, res) => {

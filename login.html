@@ -131,6 +131,25 @@
             padding: 0.65rem 0.75rem;
         }
 
+        .status {
+            margin: 0.8rem 0;
+            font-size: 0.92rem;
+            border-radius: 10px;
+            padding: 0.65rem 0.75rem;
+        }
+
+        .status.pending {
+            color: #e8ecff;
+            border: 1px solid rgba(109, 125, 255, 0.55);
+            background: rgba(109, 125, 255, 0.16);
+        }
+
+        .status.success {
+            color: #eaffef;
+            border: 1px solid rgba(34, 197, 94, 0.45);
+            background: rgba(34, 197, 94, 0.14);
+        }
+
         .hidden {
             display: none;
         }
@@ -150,6 +169,7 @@
         <p class="hint"><strong>Tip:</strong> Owner ने दिलेला password वापरा.</p>
 
         <div id="errorBox" class="error hidden"></div>
+    <div id="statusBox" class="status hidden"></div>
 
         <form id="passwordForm">
             <div class="field">
@@ -168,28 +188,140 @@
         const loginBtn = document.getElementById("loginBtn");
         const accessPassword = document.getElementById("accessPassword");
         const errorBox = document.getElementById("errorBox");
+        const statusBox = document.getElementById("statusBox");
         const accessBadge = document.getElementById("accessBadge");
         const accessTitle = document.getElementById("accessTitle");
         const accessSub = document.getElementById("accessSub");
         const passwordLabel = document.getElementById("passwordLabel");
         const nextPath = new URLSearchParams(window.location.search).get("next") || "";
         const isAdminPanelRequest = nextPath === "/admin" || nextPath === "/admin.html";
+        const ADMIN_DEVICE_TOKEN_STORAGE_KEY = "admin-access-device-token";
+
+        let approvalPollTimer = null;
 
         if (isAdminPanelRequest) {
             accessBadge.textContent = "Admin Panel Access";
             accessTitle.textContent = "Open Admin Panel";
-            accessSub.textContent = "Admin password टाकल्यावर थेट admin panel open होईल.";
+            accessSub.textContent = "Admin password टाकल्यावर owner कडे verify request जाईल. Owner verify केल्यावर admin panel open होईल.";
             passwordLabel.textContent = "Admin Password";
         }
 
         function showError(message) {
+            clearStatus();
             errorBox.textContent = message;
             errorBox.classList.remove("hidden");
         }
 
+        function clearError() {
+            errorBox.textContent = "";
+            errorBox.classList.add("hidden");
+        }
+
+        function showStatus(message, tone = "pending") {
+            statusBox.textContent = message;
+            statusBox.className = `status ${tone}`;
+            statusBox.classList.remove("hidden");
+        }
+
+        function clearStatus() {
+            statusBox.textContent = "";
+            statusBox.className = "status hidden";
+        }
+
+        function setLoginState(disabled, label) {
+            loginBtn.disabled = disabled;
+            loginBtn.textContent = label;
+        }
+
+        function stopApprovalPolling() {
+            if (!approvalPollTimer) return;
+            clearInterval(approvalPollTimer);
+            approvalPollTimer = null;
+        }
+
+        function createAdminDeviceToken() {
+            if (window.crypto && typeof window.crypto.getRandomValues === "function") {
+                const bytes = new Uint8Array(24);
+                window.crypto.getRandomValues(bytes);
+                const randomPart = [...bytes].map((value) => value.toString(16).padStart(2, "0")).join("");
+                return `adt_${randomPart}`;
+            }
+
+            const chunk = () => Math.random().toString(36).slice(2, 12);
+            return `adt_${Date.now().toString(36)}_${chunk()}${chunk()}`;
+        }
+
+        function getOrCreateAdminDeviceToken() {
+            const tokenPattern = /^[a-zA-Z0-9_-]{16,220}$/;
+
+            try {
+                const existing = String(localStorage.getItem(ADMIN_DEVICE_TOKEN_STORAGE_KEY) || "").trim();
+                if (tokenPattern.test(existing)) {
+                    return existing;
+                }
+
+                const generatedToken = createAdminDeviceToken();
+                localStorage.setItem(ADMIN_DEVICE_TOKEN_STORAGE_KEY, generatedToken);
+                return generatedToken;
+            } catch (error) {
+                return createAdminDeviceToken();
+            }
+        }
+
+        function getAdminDeviceLabel() {
+            const platform = String(navigator.platform || "Unknown device").trim();
+            const browserMatch = navigator.userAgent.match(/(Edg|Chrome|Firefox|Safari|OPR)\/[^\s]+/);
+            const browser = browserMatch ? browserMatch[0].replace("OPR", "Opera") : "Browser";
+            return `${platform} • ${browser}`.slice(0, 140);
+        }
+
+        async function checkAdminApproval(requestId) {
+            try {
+                const res = await fetch(`/auth/admin-approval-status?requestId=${encodeURIComponent(requestId)}`, {
+                    cache: "no-store"
+                });
+                const data = await res.json();
+
+                if (data?.approved && data?.redirectTo) {
+                    stopApprovalPolling();
+                    showStatus("Owner ने verify केलं. Admin panel उघडतोय...", "success");
+                    window.location.href = data.redirectTo;
+                    return;
+                }
+
+                if (data?.status === "rejected" || res.status === 403) {
+                    stopApprovalPolling();
+                    setLoginState(false, "Login");
+                    showError(data.error || "Owner ने verify नाही केलं. Admin panel access मिळाला नाही.");
+                    return;
+                }
+
+                if (!res.ok && data?.status !== "pending") {
+                    stopApprovalPolling();
+                    setLoginState(false, "Login");
+                    showError(data.error || "Admin approval check failed.");
+                }
+            } catch (error) {
+                stopApprovalPolling();
+                setLoginState(false, "Login");
+                showError("Owner verification status check failed. Try again.");
+            }
+        }
+
+        function startApprovalPolling(requestId) {
+            stopApprovalPolling();
+            setLoginState(true, "Waiting for owner...");
+            showStatus("Owner verification pending. Owner verify केल्यावर admin panel access मिळेल.", "pending");
+            approvalPollTimer = setInterval(() => {
+                checkAdminApproval(requestId);
+            }, 3000);
+        }
+
         passwordForm.addEventListener("submit", async (event) => {
             event.preventDefault();
-            errorBox.classList.add("hidden");
+            stopApprovalPolling();
+            clearError();
+            clearStatus();
 
             const password = accessPassword.value.trim();
             if (!password) {
@@ -197,8 +329,8 @@
                 return;
             }
 
-            loginBtn.disabled = true;
-            loginBtn.textContent = "Checking...";
+            setLoginState(true, "Checking...");
+            let waitingForOwner = false;
 
             try {
                 const res = await fetch("/auth/password", {
@@ -206,10 +338,22 @@
                     headers: {
                         "Content-Type": "application/json"
                     },
-                    body: JSON.stringify({ password, next: nextPath })
+                    body: JSON.stringify({
+                        password,
+                        next: nextPath,
+                        adminDeviceToken: getOrCreateAdminDeviceToken(),
+                        adminDeviceLabel: getAdminDeviceLabel()
+                    })
                 });
 
                 const data = await res.json();
+                if (data?.approvalRequired && data?.requestId) {
+                    waitingForOwner = true;
+                    startApprovalPolling(data.requestId);
+                    await checkAdminApproval(data.requestId);
+                    return;
+                }
+
                 if (!res.ok || !data.ok) {
                     showError(data.error || "Login failed");
                     return;
@@ -219,8 +363,9 @@
             } catch (error) {
                 showError("Network error while login. Try again.");
             } finally {
-                loginBtn.disabled = false;
-                loginBtn.textContent = "Login";
+                if (!waitingForOwner) {
+                    setLoginState(false, "Login");
+                }
             }
         });
     </script>

@@ -124,6 +124,77 @@
       word-break: break-all;
     }
 
+    .request-card {
+      margin-bottom: 1rem;
+    }
+
+    .section-head-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 0.8rem;
+      margin-bottom: 0.8rem;
+    }
+
+    .request-device {
+      display: grid;
+      gap: 0.2rem;
+    }
+
+    .request-device strong {
+      font-size: 0.84rem;
+    }
+
+    .status-badge.pending {
+      color: #ffe3ab;
+      border-color: rgba(245, 158, 11, 0.45);
+      background: rgba(245, 158, 11, 0.14);
+    }
+
+    .status-badge.approved {
+      color: #d7ffe4;
+      border-color: rgba(34, 197, 94, 0.45);
+      background: rgba(34, 197, 94, 0.14);
+    }
+
+    .status-badge.rejected {
+      color: #ffd9d9;
+      border-color: rgba(255, 107, 107, 0.45);
+      background: rgba(255, 107, 107, 0.14);
+    }
+
+    .table-actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.45rem;
+    }
+
+    .mini-btn {
+      border: 1px solid var(--stroke);
+      background: rgba(255, 255, 255, 0.05);
+      color: var(--text);
+      border-radius: 8px;
+      padding: 0.4rem 0.62rem;
+      cursor: pointer;
+      font-weight: 700;
+      font-size: 0.76rem;
+    }
+
+    .mini-btn.verify-btn {
+      border-color: rgba(34, 197, 94, 0.28);
+      background: rgba(34, 197, 94, 0.14);
+    }
+
+    .mini-btn.unverify-btn {
+      border-color: rgba(255, 107, 107, 0.28);
+      background: rgba(255, 107, 107, 0.12);
+    }
+
+    .mini-btn:disabled {
+      opacity: 0.65;
+      cursor: wait;
+    }
+
     .toolbar {
       display: flex;
       flex-wrap: wrap;
@@ -290,6 +361,34 @@
       </div>
     </div>
 
+    <div class="card request-card">
+      <div class="section-head-row">
+        <div>
+          <h3>Admin Access Verification</h3>
+          <div class="muted">Admin panel link open केल्यावर verify requests इथे दिसतील.</div>
+        </div>
+        <span class="badge" id="adminRequestCount">0 requests</span>
+      </div>
+
+      <div class="mini-table-wrap">
+        <table class="mini-table">
+          <thead>
+            <tr>
+              <th>Status</th>
+              <th>Device</th>
+              <th>Requested</th>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody id="adminRequestRows">
+            <tr>
+              <td colspan="4" class="muted">No admin verify requests yet.</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
     <div class="toolbar">
       <input id="searchInput" type="search" placeholder="Search by name/email/service/source..." />
       <span class="badge" id="countBadge">0 rows</span>
@@ -330,6 +429,8 @@
   const uniqueVisitors = document.getElementById("uniqueVisitors");
   const dailyVisitRows = document.getElementById("dailyVisitRows");
   const topPageRows = document.getElementById("topPageRows");
+  const adminRequestRows = document.getElementById("adminRequestRows");
+  const adminRequestCount = document.getElementById("adminRequestCount");
 
     let allLeads = [];
 
@@ -414,6 +515,101 @@
       }).join("");
     }
 
+    function fmtStatusLabel(value) {
+      const status = String(value || "pending").toLowerCase();
+      if (status === "approved") return "Verified";
+      if (status === "rejected") return "Unverified";
+      return "Pending";
+    }
+
+    function renderAdminRequests(rows) {
+      if (!adminRequestRows || !adminRequestCount) return;
+
+      const requests = Array.isArray(rows) ? rows : [];
+      adminRequestCount.textContent = `${requests.length} requests`;
+
+      if (!requests.length) {
+        adminRequestRows.innerHTML = `
+          <tr>
+            <td colspan="4" class="muted">No admin verify requests yet.</td>
+          </tr>
+        `;
+        return;
+      }
+
+      adminRequestRows.innerHTML = requests.map((request) => {
+        const status = String(request.status || "pending").toLowerCase();
+        const safeId = escapeHtml(request.id || "");
+        const safeDevice = escapeHtml(request.deviceLabel || "Unknown device");
+        const safePath = escapeHtml(request.requestedPath || "/admin");
+        const safeUserAgent = escapeHtml(request.userAgent || "");
+        const safeReviewer = escapeHtml(request.reviewer || "");
+
+        const requestedMeta = [
+          fmtDate(request.requestedAt),
+          request.reviewedAt ? `Reviewed: ${fmtDate(request.reviewedAt)}${safeReviewer ? ` by ${safeReviewer}` : ""}` : ""
+        ].filter(Boolean);
+
+        const actions = status === "approved"
+          ? `
+            <button type="button" class="mini-btn unverify-btn" data-request-id="${safeId}" data-action="unverify">Unverify</button>
+          `
+          : `
+            <button type="button" class="mini-btn verify-btn" data-request-id="${safeId}" data-action="verify">Verify</button>
+            <button type="button" class="mini-btn unverify-btn" data-request-id="${safeId}" data-action="unverify">Unverify</button>
+          `;
+
+        return `
+          <tr>
+            <td>
+              <span class="badge status-badge ${status}">${fmtStatusLabel(status)}</span>
+            </td>
+            <td>
+              <div class="request-device">
+                <strong>${safeDevice}</strong>
+                <span class="muted">Request: ${safePath}</span>
+                ${safeUserAgent ? `<span class="muted">${safeUserAgent}</span>` : ""}
+              </div>
+            </td>
+            <td>${requestedMeta.map((item) => `<div>${escapeHtml(item)}</div>`).join("")}</td>
+            <td>
+              <div class="table-actions">
+                ${actions}
+              </div>
+            </td>
+          </tr>
+        `;
+      }).join("");
+    }
+
+    async function updateAdminRequestStatus(requestId, action, button) {
+      if (!requestId || !action) return;
+      clearError();
+
+      if (button) {
+        button.disabled = true;
+      }
+
+      try {
+        const res = await fetch(`/api/admin-access/requests/${encodeURIComponent(requestId)}/${encodeURIComponent(action)}`, {
+          method: "POST"
+        });
+        const data = await res.json();
+
+        if (!res.ok || !data?.ok) {
+          throw new Error(data?.error || "Failed to update request");
+        }
+
+        await loadAdminData();
+      } catch (error) {
+        showError(error.message || "Failed to update admin verify request.");
+      } finally {
+        if (button) {
+          button.disabled = false;
+        }
+      }
+    }
+
     function renderRows(rows) {
       leadRows.innerHTML = rows.map((lead) => `
         <tr>
@@ -470,7 +666,7 @@
         const meData = await meRes.json();
 
         if (!meRes.ok || !meData?.ok || !meData?.user?.isAdmin) {
-          window.location.href = "/login";
+          window.location.href = "/login?next=/admin";
           return;
         }
 
@@ -478,17 +674,22 @@
 
         const requestOptions = { cache: "no-store" };
 
-        const [statsRes, leadsRes, visitorsRes] = await Promise.all([
+        const [statsRes, leadsRes, visitorsRes, adminAccessRes] = await Promise.all([
           fetch("/api/leads/stats", requestOptions),
           fetch("/api/leads?limit=200", requestOptions),
-          fetch("/api/visitors/stats", requestOptions)
+          fetch("/api/visitors/stats", requestOptions),
+          fetch("/api/admin-access/requests", requestOptions)
         ]);
 
         const statsData = await statsRes.json();
         const leadsData = await leadsRes.json();
         const visitorsData = await visitorsRes.json();
+        const adminAccessData = await adminAccessRes.json();
 
-        if (!statsRes.ok || !leadsRes.ok || !visitorsRes.ok || !statsData.ok || !leadsData.ok || !visitorsData.ok) {
+        if (
+          !statsRes.ok || !leadsRes.ok || !visitorsRes.ok || !adminAccessRes.ok ||
+          !statsData.ok || !leadsData.ok || !visitorsData.ok || !adminAccessData.ok
+        ) {
           throw new Error("Failed to load admin data");
         }
 
@@ -501,6 +702,7 @@
         uniqueVisitors.textContent = visitorsData.uniqueIps || 0;
         renderDailyVisits(visitorsData.dailyVisits);
         renderTopPages(visitorsData.topPages);
+        renderAdminRequests(adminAccessData.requests);
 
         allLeads = Array.isArray(leadsData.leads) ? leadsData.leads : [];
         renderRows(allLeads);
@@ -511,6 +713,15 @@
 
     searchInput.addEventListener("input", applySearch);
     refreshBtn.addEventListener("click", loadAdminData);
+
+    if (adminRequestRows) {
+      adminRequestRows.addEventListener("click", (event) => {
+        const button = event.target.closest("button[data-request-id][data-action]");
+        if (!button) return;
+
+        updateAdminRequestStatus(button.dataset.requestId, button.dataset.action, button);
+      });
+    }
 
     logoutBtn.addEventListener("click", async () => {
       try {
