@@ -433,6 +433,7 @@
   const adminRequestCount = document.getElementById("adminRequestCount");
 
     let allLeads = [];
+    let adminRequestPollTimer = null;
 
     function showError(message) {
       errorBox.textContent = message;
@@ -526,7 +527,8 @@
       if (!adminRequestRows || !adminRequestCount) return;
 
       const requests = Array.isArray(rows) ? rows : [];
-      adminRequestCount.textContent = `${requests.length} requests`;
+      const pendingCount = requests.filter((request) => String(request.status || "").toLowerCase() === "pending").length;
+      adminRequestCount.textContent = `${requests.length} requests • ${pendingCount} pending`;
 
       if (!requests.length) {
         adminRequestRows.innerHTML = `
@@ -600,7 +602,7 @@
           throw new Error(data?.error || "Failed to update request");
         }
 
-        await loadAdminData();
+        await loadAdminAccessRequestsSilently();
       } catch (error) {
         showError(error.message || "Failed to update admin verify request.");
       } finally {
@@ -656,6 +658,32 @@
       if (!entries.length) return "-";
       entries.sort((a, b) => b[1] - a[1]);
       return `${entries[0][0]} (${entries[0][1]})`;
+    }
+
+    async function loadAdminAccessRequestsSilently() {
+      if (!adminRequestRows) return;
+
+      try {
+        const res = await fetch("/api/admin-access/requests", { cache: "no-store" });
+        const data = await res.json();
+
+        if (!res.ok || !data?.ok) {
+          return;
+        }
+
+        renderAdminRequests(data.requests);
+      } catch (error) {
+        // keep silent during background polling
+      }
+    }
+
+    function startAdminRequestPolling() {
+      if (adminRequestPollTimer) return;
+
+      adminRequestPollTimer = setInterval(() => {
+        if (document.visibilityState !== "visible") return;
+        loadAdminAccessRequestsSilently();
+      }, 1500);
     }
 
     async function loadAdminData() {
@@ -732,7 +760,8 @@
     });
 
     loadAdminData();
-    setInterval(loadAdminData, 30000);
+    startAdminRequestPolling();
+    setInterval(loadAdminData, 15000);
   </script>
 </body>
 </html>

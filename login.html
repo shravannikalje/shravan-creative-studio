@@ -198,6 +198,8 @@
         const ADMIN_DEVICE_TOKEN_STORAGE_KEY = "admin-access-device-token";
 
         let approvalPollTimer = null;
+        let approvalEventSource = null;
+        let approvalResolved = false;
 
         if (isAdminPanelRequest) {
             accessBadge.textContent = "Admin Panel Access";
@@ -234,9 +236,15 @@
         }
 
         function stopApprovalPolling() {
-            if (!approvalPollTimer) return;
-            clearInterval(approvalPollTimer);
-            approvalPollTimer = null;
+            if (approvalPollTimer) {
+                clearInterval(approvalPollTimer);
+                approvalPollTimer = null;
+            }
+
+            if (approvalEventSource) {
+                approvalEventSource.close();
+                approvalEventSource = null;
+            }
         }
 
         function createAdminDeviceToken() {
@@ -276,6 +284,8 @@
         }
 
         async function checkAdminApproval(requestId) {
+            if (approvalResolved) return;
+
             try {
                 const res = await fetch(`/auth/admin-approval-status?requestId=${encodeURIComponent(requestId)}`, {
                     cache: "no-store"
@@ -283,13 +293,17 @@
                 const data = await res.json();
 
                 if (data?.approved && data?.redirectTo) {
+                    approvalResolved = true;
                     stopApprovalPolling();
-                    showStatus("Owner ने verify केलं. Admin panel उघडतोय...", "success");
-                    window.location.href = data.redirectTo;
+                    showStatus("Successfully verified ✅ Admin panel उघडतोय...", "success");
+                    setTimeout(() => {
+                        window.location.href = data.redirectTo;
+                    }, 700);
                     return;
                 }
 
                 if (data?.status === "rejected" || res.status === 403) {
+                    approvalResolved = true;
                     stopApprovalPolling();
                     setLoginState(false, "Login");
                     showError(data.error || "Owner ने verify नाही केलं. Admin panel access मिळाला नाही.");
@@ -308,18 +322,54 @@
             }
         }
 
+        function startApprovalRealtimeStream(requestId) {
+            if (typeof window.EventSource !== "function") return;
+
+            if (approvalEventSource) {
+                approvalEventSource.close();
+                approvalEventSource = null;
+            }
+
+            approvalEventSource = new EventSource(`/auth/admin-approval-stream?requestId=${encodeURIComponent(requestId)}`);
+
+            approvalEventSource.onmessage = async (event) => {
+                if (approvalResolved) return;
+
+                try {
+                    const payload = JSON.parse(event.data || "{}");
+                    const status = String(payload?.status || "pending").toLowerCase();
+
+                    if (status === "approved" || status === "rejected") {
+                        await checkAdminApproval(requestId);
+                    }
+                } catch (error) {
+                    // ignore malformed realtime payload and continue with polling fallback
+                }
+            };
+
+            approvalEventSource.onerror = () => {
+                if (approvalEventSource) {
+                    approvalEventSource.close();
+                    approvalEventSource = null;
+                }
+            };
+        }
+
         function startApprovalPolling(requestId) {
             stopApprovalPolling();
+            approvalResolved = false;
             setLoginState(true, "Waiting for owner...");
             showStatus("Owner verification pending. Owner verify केल्यावर admin panel access मिळेल.", "pending");
+            startApprovalRealtimeStream(requestId);
             approvalPollTimer = setInterval(() => {
                 checkAdminApproval(requestId);
-            }, 3000);
+            }, 1000);
         }
 
         passwordForm.addEventListener("submit", async (event) => {
             event.preventDefault();
             stopApprovalPolling();
+            approvalResolved = false;
             clearError();
             clearStatus();
 

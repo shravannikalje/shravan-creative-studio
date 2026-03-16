@@ -73,6 +73,7 @@ function resolveRuntimeVisitorOffsets(actualTotal, actualToday) {
 
 const oauthClient = AUTH_MODE === "google" && GOOGLE_CLIENT_ID ? new OAuth2Client(GOOGLE_CLIENT_ID) : null;
 let trustedCustomDevices = {};
+const adminApprovalStreams = new Map();
 
 app.use(cors());
 app.use(express.json());
@@ -436,6 +437,52 @@ function mapAdminAccessRequestForClient(request) {
   };
 }
 
+function emitAdminApprovalEvent(requestId, status) {
+  const streamSet = adminApprovalStreams.get(requestId);
+  if (!streamSet || !streamSet.size) return;
+
+  const payload = JSON.stringify({
+    requestId,
+    status,
+    timestamp: new Date().toISOString()
+  });
+
+  for (const stream of [...streamSet]) {
+    if (!stream || stream.writableEnded || stream.destroyed) {
+      streamSet.delete(stream);
+      continue;
+    }
+
+    try {
+      stream.write(`data: ${payload}\n\n`);
+    } catch {
+      streamSet.delete(stream);
+    }
+  }
+
+  if (!streamSet.size) {
+    adminApprovalStreams.delete(requestId);
+  }
+}
+
+function addAdminApprovalStream(requestId, stream) {
+  if (!adminApprovalStreams.has(requestId)) {
+    adminApprovalStreams.set(requestId, new Set());
+  }
+
+  adminApprovalStreams.get(requestId).add(stream);
+}
+
+function removeAdminApprovalStream(requestId, stream) {
+  const streamSet = adminApprovalStreams.get(requestId);
+  if (!streamSet) return;
+
+  streamSet.delete(stream);
+  if (!streamSet.size) {
+    adminApprovalStreams.delete(requestId);
+  }
+}
+
 async function createOrRefreshAdminAccessRequest({ deviceToken, deviceLabel, userAgent, requestedPath }) {
   const requests = await readAdminAccessRequests();
   const now = new Date().toISOString();
@@ -447,6 +494,7 @@ async function createOrRefreshAdminAccessRequest({ deviceToken, deviceLabel, use
     latestRequest.requestedPath = sanitizeRedirectPath(requestedPath) || latestRequest.requestedPath || "/admin";
     latestRequest.updatedAt = now;
     await writeAdminAccessRequests(requests);
+    emitAdminApprovalEvent(latestRequest.id, "pending");
     return latestRequest;
   }
 
@@ -465,6 +513,7 @@ async function createOrRefreshAdminAccessRequest({ deviceToken, deviceLabel, use
 
   requests.push(request);
   await writeAdminAccessRequests(requests);
+  emitAdminApprovalEvent(request.id, "pending");
   return request;
 }
 
@@ -483,6 +532,7 @@ async function setAdminAccessRequestStatus(requestId, nextStatus, reviewer = "Ow
   request.reviewer = sanitizeText(reviewer, 100) || "Owner";
 
   await writeAdminAccessRequests(requests);
+  emitAdminApprovalEvent(request.id, request.status);
   return request;
 }
 
@@ -783,6 +833,51 @@ app.get("/auth/admin-approval-status", async (req, res) => {
   }
 });
 
+app.get("/auth/admin-approval-stream", async (req, res) => {
+  try {
+    const requestId = sanitizeText(req.query?.requestId || "", 120);
+    const pendingAdminAccess = req.session?.pendingAdminAccess;
+
+    if (!requestId || !pendingAdminAccess || pendingAdminAccess.requestId !== requestId) {
+      return res.status(404).json({ ok: false, error: "No pending admin approval stream found" });
+    }
+
+    const requests = await readAdminAccessRequests();
+    const accessRequest = requests.find((request) => (
+      request.id === requestId && request.deviceToken === pendingAdminAccess.deviceToken
+    ));
+
+    if (!accessRequest) {
+      return res.status(404).json({ ok: false, error: "Admin verify request not found" });
+    }
+
+    res.setHeader("Content-Type", "text/event-stream");
+    res.setHeader("Cache-Control", "no-cache");
+    res.setHeader("Connection", "keep-alive");
+
+    if (typeof res.flushHeaders === "function") {
+      res.flushHeaders();
+    }
+
+    addAdminApprovalStream(requestId, res);
+    emitAdminApprovalEvent(requestId, accessRequest.status || "pending");
+
+    const keepAliveTimer = setInterval(() => {
+      if (!res.writableEnded) {
+        res.write(":keepalive\n\n");
+      }
+    }, 20000);
+
+    req.on("close", () => {
+      clearInterval(keepAliveTimer);
+      removeAdminApprovalStream(requestId, res);
+      res.end();
+    });
+  } catch (error) {
+    return res.status(500).json({ ok: false, error: "Failed to open admin approval stream" });
+  }
+});
+
 app.post("/auth/google", async (req, res) => {
   try {
     if (AUTH_MODE !== "google") {
@@ -874,6 +969,7 @@ app.use((req, res, next) => {
     "/login.html",
     "/auth/password",
     "/auth/admin-approval-status",
+    "/auth/admin-approval-stream",
     "/auth/google",
     "/auth/me",
     "/auth/logout",
