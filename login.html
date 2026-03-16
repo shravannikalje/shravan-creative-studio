@@ -144,16 +144,16 @@
 </head>
 <body>
     <div class="card">
-        <p class="badge">Private Website Access</p>
-        <h1>Access with Password</h1>
-        <p class="sub">Gmail login बंद आहे. Password टाकल्यावर website access मिळेल.</p>
+        <p class="badge" id="accessBadge">Private Website Access</p>
+        <h1 id="accessTitle">Access with Password</h1>
+        <p class="sub" id="accessSub">Gmail login बंद आहे. Password टाकल्यावर website access मिळेल.</p>
         <p class="hint"><strong>Tip:</strong> Owner ने दिलेला password वापरा.</p>
 
         <div id="errorBox" class="error hidden"></div>
 
         <form id="passwordForm">
             <div class="field">
-                <label for="accessPassword">Website Password</label>
+                <label for="accessPassword" id="passwordLabel">Website Password</label>
                 <input id="accessPassword" name="accessPassword" type="password" placeholder="Enter password" required>
             </div>
 
@@ -168,6 +168,19 @@
         const loginBtn = document.getElementById("loginBtn");
         const accessPassword = document.getElementById("accessPassword");
         const errorBox = document.getElementById("errorBox");
+        const accessBadge = document.getElementById("accessBadge");
+        const accessTitle = document.getElementById("accessTitle");
+        const accessSub = document.getElementById("accessSub");
+        const passwordLabel = document.getElementById("passwordLabel");
+        const nextPath = new URLSearchParams(window.location.search).get("next") || "";
+        const isAdminPanelRequest = nextPath === "/admin" || nextPath === "/admin.html";
+
+        if (isAdminPanelRequest) {
+            accessBadge.textContent = "Admin Panel Access";
+            accessTitle.textContent = "Open Admin Panel";
+            accessSub.textContent = "Admin password टाकल्यावर थेट admin panel open होईल.";
+            passwordLabel.textContent = "Admin Password";
+        }
 
         function showError(message) {
             errorBox.textContent = message;
@@ -193,7 +206,7 @@
                     headers: {
                         "Content-Type": "application/json"
                     },
-                    body: JSON.stringify({ password })
+                    body: JSON.stringify({ password, next: nextPath })
                 });
 
                 const data = await res.json();
@@ -202,7 +215,7 @@
                     return;
                 }
 
-                window.location.href = "/";
+                window.location.href = data.redirectTo || "/";
             } catch (error) {
                 showError("Network error while login. Try again.");
             } finally {

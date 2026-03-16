@@ -278,6 +278,56 @@ function sanitizeText(value, maxLength = 200) {
   return value.trim().slice(0, maxLength);
 }
 
+function sanitizeRedirectPath(value) {
+  const rawValue = String(value || "").trim();
+  if (!rawValue) return "";
+
+  if (!rawValue.startsWith("/") || rawValue.startsWith("//") || rawValue.includes("://")) {
+    return "";
+  }
+
+  try {
+    const parsed = new URL(rawValue, "http://localhost");
+    const normalizedPath = `${parsed.pathname || "/"}${parsed.search || ""}${parsed.hash || ""}`;
+
+    if (!normalizedPath.startsWith("/")) {
+      return "";
+    }
+
+    if (normalizedPath.startsWith("/api/") || normalizedPath.startsWith("/auth/")) {
+      return "";
+    }
+
+    return normalizedPath;
+  } catch {
+    return "";
+  }
+}
+
+function getPostLoginRedirect(requestedPath, isAdmin = false) {
+  const safeNextPath = sanitizeRedirectPath(requestedPath);
+
+  if (safeNextPath === "/admin" || safeNextPath === "/admin.html") {
+    return isAdmin ? "/admin" : "/";
+  }
+
+  if (!safeNextPath || safeNextPath === "/" || safeNextPath === "/login" || safeNextPath === "/login.html") {
+    return isAdmin ? "/admin" : "/";
+  }
+
+  return safeNextPath;
+}
+
+function redirectToLogin(req, res) {
+  const nextPath = sanitizeRedirectPath(req.originalUrl || req.path || "/");
+
+  if (!nextPath || nextPath === "/login" || nextPath === "/login.html") {
+    return res.redirect("/login");
+  }
+
+  return res.redirect(`/login?next=${encodeURIComponent(nextPath)}`);
+}
+
 function buildLeadRecord(body, req) {
   const estimate = body?.estimate && typeof body.estimate === "object"
     ? {
@@ -369,7 +419,7 @@ function requireAdmin(req, res, next) {
     if (req.path.startsWith("/api/")) {
       return res.status(401).json({ ok: false, error: "Unauthorized" });
     }
-    return res.redirect("/login");
+    return redirectToLogin(req, res);
   }
 
   if (!req.session.user.isAdmin) {
@@ -428,7 +478,8 @@ app.get("/healthz", (req, res) => {
 
 app.get(["/login", "/login.html"], async (req, res) => {
   if (req.session?.user) {
-    return res.redirect("/");
+    const redirectTo = getPostLoginRedirect(req.query?.next, Boolean(req.session.user.isAdmin));
+    return res.redirect(redirectTo);
   }
 
   try {
@@ -455,6 +506,7 @@ app.post("/auth/password", (req, res) => {
     }
 
     const password = sanitizeText(req.body?.password || "", 120);
+    const requestedNextPath = sanitizeRedirectPath(req.body?.next || "");
     if (!password) {
       return res.status(400).json({ ok: false, error: "Password is required" });
     }
@@ -474,7 +526,11 @@ app.post("/auth/password", (req, res) => {
     };
 
     return req.session.save(() => {
-      res.json({ ok: true, user: req.session.user });
+      res.json({
+        ok: true,
+        user: req.session.user,
+        redirectTo: getPostLoginRedirect(requestedNextPath, isAdmin)
+      });
     });
   } catch (error) {
     return res.status(500).json({ ok: false, error: "Password login failed" });
@@ -530,7 +586,11 @@ app.post("/auth/google", async (req, res) => {
     };
 
     return req.session.save(() => {
-      res.json({ ok: true, user: req.session.user });
+      res.json({
+        ok: true,
+        user: req.session.user,
+        redirectTo: getPostLoginRedirect(req.body?.next, req.session.user.isAdmin)
+      });
     });
   } catch (error) {
     return res.status(401).json({ ok: false, error: "Google login failed" });
@@ -586,7 +646,7 @@ app.use((req, res, next) => {
     return res.status(401).json({ ok: false, error: "Unauthorized" });
   }
 
-  return res.redirect("/login");
+  return redirectToLogin(req, res);
 });
 
 app.get("/api/live-status", (req, res) => {
