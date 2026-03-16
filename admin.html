@@ -81,6 +81,49 @@
     .card h3 { font-size: 0.86rem; text-transform: uppercase; letter-spacing: 0.6px; color: var(--muted); }
     .card p { font-size: 1.5rem; font-weight: 800; margin-top: 0.35rem; }
 
+    .analytics-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 0.8rem;
+      margin-bottom: 1rem;
+    }
+
+    .mini-table-wrap {
+      margin-top: 0.55rem;
+      overflow: auto;
+      border-radius: 10px;
+    }
+
+    .mini-table {
+      width: 100%;
+      border-collapse: collapse;
+      border-radius: 10px;
+      overflow: hidden;
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .mini-table th,
+    .mini-table td {
+      text-align: left;
+      padding: 0.52rem 0.56rem;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      font-size: 0.82rem;
+      vertical-align: top;
+    }
+
+    .mini-table th {
+      position: static;
+      background: rgba(255, 255, 255, 0.06);
+    }
+
+    .mini-table tr:last-child td {
+      border-bottom: none;
+    }
+
+    .path-cell {
+      word-break: break-all;
+    }
+
     .toolbar {
       display: flex;
       flex-wrap: wrap;
@@ -190,16 +233,60 @@
         <p id="topSource">-</p>
       </div>
       <div class="card">
-        <h3>Total Visitors</h3>
+        <h3>Total Website Visits</h3>
         <p id="totalVisitors">0</p>
       </div>
       <div class="card">
-        <h3>Today's Visitors</h3>
+        <h3>Today's Website Visits</h3>
         <p id="todayVisitors">0</p>
+      </div>
+      <div class="card">
+        <h3>Unique Visitors</h3>
+        <p id="uniqueVisitors">0</p>
       </div>
       <div class="card">
         <h3>Status</h3>
         <p class="ok" id="panelStatus">Live</p>
+      </div>
+    </div>
+
+    <div class="analytics-grid">
+      <div class="card">
+        <h3>Daily Visits (Last 7 Days)</h3>
+        <div class="mini-table-wrap">
+          <table class="mini-table">
+            <thead>
+              <tr>
+                <th>Date</th>
+                <th>Visits</th>
+              </tr>
+            </thead>
+            <tbody id="dailyVisitRows">
+              <tr>
+                <td colspan="2" class="muted">Loading trend...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="card">
+        <h3>Top Pages</h3>
+        <div class="mini-table-wrap">
+          <table class="mini-table">
+            <thead>
+              <tr>
+                <th>Page</th>
+                <th>Visits</th>
+              </tr>
+            </thead>
+            <tbody id="topPageRows">
+              <tr>
+                <td colspan="2" class="muted">Loading pages...</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
 
@@ -240,6 +327,9 @@
 
   const totalVisitors = document.getElementById("totalVisitors");
   const todayVisitors = document.getElementById("todayVisitors");
+  const uniqueVisitors = document.getElementById("uniqueVisitors");
+  const dailyVisitRows = document.getElementById("dailyVisitRows");
+  const topPageRows = document.getElementById("topPageRows");
 
     let allLeads = [];
 
@@ -260,6 +350,68 @@
         dateStyle: "medium",
         timeStyle: "short"
       }).format(d);
+    }
+
+    function fmtDateOnly(value) {
+      if (!value) return "-";
+      const d = new Date(`${value}T00:00:00`);
+      if (Number.isNaN(d.getTime())) return value;
+
+      return new Intl.DateTimeFormat("en-IN", {
+        dateStyle: "medium"
+      }).format(d);
+    }
+
+    function escapeHtml(value) {
+      return String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/\"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+    }
+
+    function renderDailyVisits(rows) {
+      if (!dailyVisitRows) return;
+
+      if (!Array.isArray(rows) || !rows.length) {
+        dailyVisitRows.innerHTML = `
+          <tr>
+            <td colspan="2" class="muted">No visit trend yet.</td>
+          </tr>
+        `;
+        return;
+      }
+
+      dailyVisitRows.innerHTML = rows.map((entry) => `
+        <tr>
+          <td>${fmtDateOnly(entry.date)}</td>
+          <td>${Number(entry.count) || 0}</td>
+        </tr>
+      `).join("");
+    }
+
+    function renderTopPages(rows) {
+      if (!topPageRows) return;
+
+      if (!Array.isArray(rows) || !rows.length) {
+        topPageRows.innerHTML = `
+          <tr>
+            <td colspan="2" class="muted">No page visits yet.</td>
+          </tr>
+        `;
+        return;
+      }
+
+      topPageRows.innerHTML = rows.map((entry) => {
+        const safePage = escapeHtml(entry.page || "-");
+        return `
+          <tr>
+            <td class="path-cell" title="${safePage}">${safePage}</td>
+            <td>${Number(entry.count) || 0}</td>
+          </tr>
+        `;
+      }).join("");
     }
 
     function renderRows(rows) {
@@ -324,10 +476,12 @@
 
         welcomeText.textContent = `Logged in as ${meData.user.email}`;
 
+        const requestOptions = { cache: "no-store" };
+
         const [statsRes, leadsRes, visitorsRes] = await Promise.all([
-          fetch("/api/leads/stats"),
-          fetch("/api/leads?limit=200"),
-          fetch("/api/visitors/stats")
+          fetch("/api/leads/stats", requestOptions),
+          fetch("/api/leads?limit=200", requestOptions),
+          fetch("/api/visitors/stats", requestOptions)
         ]);
 
         const statsData = await statsRes.json();
@@ -344,6 +498,9 @@
 
         totalVisitors.textContent = visitorsData.total || 0;
         todayVisitors.textContent = visitorsData.today || 0;
+        uniqueVisitors.textContent = visitorsData.uniqueIps || 0;
+        renderDailyVisits(visitorsData.dailyVisits);
+        renderTopPages(visitorsData.topPages);
 
         allLeads = Array.isArray(leadsData.leads) ? leadsData.leads : [];
         renderRows(allLeads);

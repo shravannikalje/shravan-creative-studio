@@ -63,6 +63,73 @@ app.use(
   })
 );
 
+const TRACKING_SKIP_PREFIXES = ["/api/", "/auth/"];
+const TRACKING_SKIP_EXACT_PATHS = new Set(["/healthz", "/favicon.ico"]);
+const STATIC_FILE_EXTENSIONS = new Set([
+  ".css",
+  ".js",
+  ".map",
+  ".png",
+  ".jpg",
+  ".jpeg",
+  ".gif",
+  ".webp",
+  ".svg",
+  ".ico",
+  ".woff",
+  ".woff2",
+  ".ttf",
+  ".eot",
+  ".json",
+  ".txt",
+  ".xml"
+]);
+
+function shouldTrackVisitorRequest(req) {
+  if (req.method !== "GET") return false;
+
+  return shouldIncludeInPageAnalytics(req.path);
+}
+
+function normalizeTrackedPath(rawPath) {
+  const value = String(rawPath || "").trim();
+  if (!value) return "/";
+
+  const withoutQuery = value.split("?")[0].split("#")[0].trim();
+  if (!withoutQuery) return "/";
+
+  return withoutQuery.startsWith("/") ? withoutQuery : `/${withoutQuery}`;
+}
+
+function shouldIncludeInPageAnalytics(rawPath) {
+  const requestedPath = normalizeTrackedPath(rawPath);
+
+  if (TRACKING_SKIP_PREFIXES.some((prefix) => requestedPath.startsWith(prefix))) {
+    return false;
+  }
+
+  if (TRACKING_SKIP_EXACT_PATHS.has(requestedPath)) {
+    return false;
+  }
+
+  const extension = path.extname(requestedPath).toLowerCase();
+  if (extension && STATIC_FILE_EXTENSIONS.has(extension)) {
+    return false;
+  }
+
+  return true;
+}
+
+app.use((req, res, next) => {
+  if (shouldTrackVisitorRequest(req)) {
+    recordVisitor(req).catch((error) => {
+      console.error("Visitor tracking middleware failed", error);
+    });
+  }
+
+  next();
+});
+
 async function ensureLeadStorage() {
   await fs.mkdir(DATA_DIR, { recursive: true });
 
@@ -600,26 +667,57 @@ app.get("/api/leads/stats", requireAdmin, async (req, res) => {
 app.get("/api/visitors/stats", requireAdmin, async (req, res) => {
   try {
     const visitors = await readVisitors();
+    const pageVisits = visitors.filter((visit) => shouldIncludeInPageAnalytics(visit.page));
     const todayDate = new Date().toISOString().slice(0, 10);
-    const todayCount = visitors.filter((v) => String(v.date || "").startsWith(todayDate)).length;
-    const uniqueIps = new Set(visitors.map((v) => v.ip)).size;
+
+    const todayCount = pageVisits.filter((visit) => {
+      const visitDate = String(visit.date || visit.timestamp || "");
+      return visitDate.startsWith(todayDate);
+    }).length;
+
+    const uniqueIps = new Set(
+      pageVisits
+        .map((visit) => String(visit.ip || "").trim())
+        .filter(Boolean)
+    ).size;
+
+    const dailyVisitCounter = pageVisits.reduce((acc, visit) => {
+      const dateKey = String(visit.date || visit.timestamp || "").slice(0, 10);
+      if (!dateKey) return acc;
+
+      acc[dateKey] = (acc[dateKey] || 0) + 1;
+      return acc;
+    }, {});
+
+    const dailyVisits = Object.entries(dailyVisitCounter)
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .slice(-7)
+      .reverse()
+      .map(([date, count]) => ({ date, count }));
+
+    const pageVisitCounter = pageVisits.reduce((acc, visit) => {
+      const pageKey = normalizeTrackedPath(visit.page);
+      acc[pageKey] = (acc[pageKey] || 0) + 1;
+      return acc;
+    }, {});
+
+    const topPages = Object.entries(pageVisitCounter)
+      .sort((a, b) => (b[1] - a[1]) || a[0].localeCompare(b[0]))
+      .slice(0, 7)
+      .map(([page, count]) => ({ page, count }));
 
     res.json({
       ok: true,
-      total: visitors.length,
+      total: pageVisits.length,
       today: todayCount,
-      uniqueIps
+      uniqueIps,
+      rawTotal: visitors.length,
+      dailyVisits,
+      topPages
     });
   } catch (error) {
     res.status(500).json({ ok: false, error: "Failed to read visitor stats" });
   }
-});
-
-app.use((req, res, next) => {
-  const skipTracking = ["/api/", "/auth/", "/healthz", "/favicon.ico"];
-  const skip = skipTracking.some((s) => req.path.startsWith(s));
-  if (!skip) recordVisitor(req).catch(console.error);
-  return next();
 });
 
 app.use(express.static(ROOT_DIR));
