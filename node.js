@@ -43,6 +43,16 @@ const CUSTOM_SECTION_PHONE_ONLY = String(process.env.CUSTOM_SECTION_PHONE_ONLY |
 const CUSTOM_SECTION_REQUIRE_TRUSTED_DEVICE =
   String(process.env.CUSTOM_SECTION_REQUIRE_TRUSTED_DEVICE || "true").trim().toLowerCase() !== "false";
 
+function toNonNegativeInteger(value, fallback = 0) {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) return fallback;
+  return Math.floor(parsed);
+}
+
+const VISITOR_BASE_TOTAL = toNonNegativeInteger(process.env.VISITOR_BASE_TOTAL, 300);
+const VISITOR_BASE_TODAY = toNonNegativeInteger(process.env.VISITOR_BASE_TODAY, 100);
+const VISITOR_BASE_NON_TODAY = Math.max(VISITOR_BASE_TOTAL - VISITOR_BASE_TODAY, 0);
+
 const oauthClient = AUTH_MODE === "google" && GOOGLE_CLIENT_ID ? new OAuth2Client(GOOGLE_CLIENT_ID) : null;
 let trustedCustomDevices = {};
 
@@ -64,7 +74,14 @@ app.use(
 );
 
 const TRACKING_SKIP_PREFIXES = ["/api/", "/auth/"];
-const TRACKING_SKIP_EXACT_PATHS = new Set(["/healthz", "/favicon.ico"]);
+const TRACKING_SKIP_EXACT_PATHS = new Set([
+  "/healthz",
+  "/favicon.ico",
+  "/login",
+  "/login.html",
+  "/admin",
+  "/admin.html"
+]);
 const STATIC_FILE_EXTENSIONS = new Set([
   ".css",
   ".js",
@@ -689,6 +706,15 @@ app.get("/api/visitors/stats", requireAdmin, async (req, res) => {
       return acc;
     }, {});
 
+    if (VISITOR_BASE_TODAY > 0) {
+      dailyVisitCounter[todayDate] = (dailyVisitCounter[todayDate] || 0) + VISITOR_BASE_TODAY;
+    }
+
+    if (VISITOR_BASE_NON_TODAY > 0) {
+      const seedDate = new Date(Date.now() - (24 * 60 * 60 * 1000)).toISOString().slice(0, 10);
+      dailyVisitCounter[seedDate] = (dailyVisitCounter[seedDate] || 0) + VISITOR_BASE_NON_TODAY;
+    }
+
     const dailyVisits = Object.entries(dailyVisitCounter)
       .sort((a, b) => a[0].localeCompare(b[0]))
       .slice(-7)
@@ -701,6 +727,10 @@ app.get("/api/visitors/stats", requireAdmin, async (req, res) => {
       return acc;
     }, {});
 
+    if (VISITOR_BASE_TOTAL > 0) {
+      pageVisitCounter["/"] = (pageVisitCounter["/"] || 0) + VISITOR_BASE_TOTAL;
+    }
+
     const topPages = Object.entries(pageVisitCounter)
       .sort((a, b) => (b[1] - a[1]) || a[0].localeCompare(b[0]))
       .slice(0, 7)
@@ -708,8 +738,8 @@ app.get("/api/visitors/stats", requireAdmin, async (req, res) => {
 
     res.json({
       ok: true,
-      total: pageVisits.length,
-      today: todayCount,
+      total: pageVisits.length + VISITOR_BASE_TOTAL,
+      today: todayCount + VISITOR_BASE_TODAY,
       uniqueIps,
       rawTotal: visitors.length,
       dailyVisits,
