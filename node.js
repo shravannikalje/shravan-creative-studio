@@ -49,9 +49,26 @@ function toNonNegativeInteger(value, fallback = 0) {
   return Math.floor(parsed);
 }
 
-const VISITOR_BASE_TOTAL = toNonNegativeInteger(process.env.VISITOR_BASE_TOTAL, 300);
-const VISITOR_BASE_TODAY = toNonNegativeInteger(process.env.VISITOR_BASE_TODAY, 100);
-const VISITOR_BASE_NON_TODAY = Math.max(VISITOR_BASE_TOTAL - VISITOR_BASE_TODAY, 0);
+const VISITOR_START_TOTAL = toNonNegativeInteger(process.env.VISITOR_START_TOTAL, 300);
+const VISITOR_START_TODAY = toNonNegativeInteger(process.env.VISITOR_START_TODAY, 100);
+
+let visitorRuntimeTotalOffset = null;
+let visitorRuntimeTodayOffset = null;
+
+function resolveRuntimeVisitorOffsets(actualTotal, actualToday) {
+  if (visitorRuntimeTotalOffset === null) {
+    visitorRuntimeTotalOffset = Math.max(VISITOR_START_TOTAL - actualTotal, 0);
+  }
+
+  if (visitorRuntimeTodayOffset === null) {
+    visitorRuntimeTodayOffset = Math.max(VISITOR_START_TODAY - actualToday, 0);
+  }
+
+  return {
+    totalOffset: visitorRuntimeTotalOffset,
+    todayOffset: visitorRuntimeTodayOffset
+  };
+}
 
 const oauthClient = AUTH_MODE === "google" && GOOGLE_CLIENT_ID ? new OAuth2Client(GOOGLE_CLIENT_ID) : null;
 let trustedCustomDevices = {};
@@ -692,6 +709,9 @@ app.get("/api/visitors/stats", requireAdmin, async (req, res) => {
       return visitDate.startsWith(todayDate);
     }).length;
 
+    const { totalOffset, todayOffset } = resolveRuntimeVisitorOffsets(pageVisits.length, todayCount);
+    const nonTodayOffset = Math.max(totalOffset - todayOffset, 0);
+
     const uniqueIps = new Set(
       pageVisits
         .map((visit) => String(visit.ip || "").trim())
@@ -706,13 +726,13 @@ app.get("/api/visitors/stats", requireAdmin, async (req, res) => {
       return acc;
     }, {});
 
-    if (VISITOR_BASE_TODAY > 0) {
-      dailyVisitCounter[todayDate] = (dailyVisitCounter[todayDate] || 0) + VISITOR_BASE_TODAY;
+    if (todayOffset > 0) {
+      dailyVisitCounter[todayDate] = (dailyVisitCounter[todayDate] || 0) + todayOffset;
     }
 
-    if (VISITOR_BASE_NON_TODAY > 0) {
+    if (nonTodayOffset > 0) {
       const seedDate = new Date(Date.now() - (24 * 60 * 60 * 1000)).toISOString().slice(0, 10);
-      dailyVisitCounter[seedDate] = (dailyVisitCounter[seedDate] || 0) + VISITOR_BASE_NON_TODAY;
+      dailyVisitCounter[seedDate] = (dailyVisitCounter[seedDate] || 0) + nonTodayOffset;
     }
 
     const dailyVisits = Object.entries(dailyVisitCounter)
@@ -727,8 +747,8 @@ app.get("/api/visitors/stats", requireAdmin, async (req, res) => {
       return acc;
     }, {});
 
-    if (VISITOR_BASE_TOTAL > 0) {
-      pageVisitCounter["/"] = (pageVisitCounter["/"] || 0) + VISITOR_BASE_TOTAL;
+    if (totalOffset > 0) {
+      pageVisitCounter["/"] = (pageVisitCounter["/"] || 0) + totalOffset;
     }
 
     const topPages = Object.entries(pageVisitCounter)
@@ -738,8 +758,8 @@ app.get("/api/visitors/stats", requireAdmin, async (req, res) => {
 
     res.json({
       ok: true,
-      total: pageVisits.length + VISITOR_BASE_TOTAL,
-      today: todayCount + VISITOR_BASE_TODAY,
+      total: pageVisits.length + totalOffset,
+      today: todayCount + todayOffset,
       uniqueIps,
       rawTotal: visitors.length,
       dailyVisits,
