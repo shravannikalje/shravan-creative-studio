@@ -51,7 +51,7 @@ function toNonNegativeInteger(value, fallback = 0) {
   return Math.floor(parsed);
 }
 
-const VISITOR_START_TOTAL = toNonNegativeInteger(process.env.VISITOR_START_TOTAL, 300);
+const VISITOR_START_TOTAL = toNonNegativeInteger(process.env.VISITOR_START_TOTAL, 500);
 const VISITOR_START_TODAY = toNonNegativeInteger(process.env.VISITOR_START_TODAY, 100);
 
 let visitorRuntimeTotalOffset = null;
