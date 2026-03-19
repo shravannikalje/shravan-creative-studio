@@ -169,6 +169,35 @@
       gap: 0.45rem;
     }
 
+    .query-contact {
+      display: grid;
+      gap: 0.16rem;
+    }
+
+    .query-message {
+      white-space: normal;
+      word-break: break-word;
+      line-height: 1.35;
+    }
+
+    .query-row.is-new-query {
+      animation: queryRowGlow 5s ease-out;
+    }
+
+    @keyframes queryRowGlow {
+      0% {
+        background: rgba(34, 197, 94, 0.34);
+      }
+
+      28% {
+        background: rgba(34, 197, 94, 0.24);
+      }
+
+      100% {
+        background: transparent;
+      }
+    }
+
     .mini-btn {
       border: 1px solid var(--stroke);
       background: rgba(255, 255, 255, 0.05);
@@ -304,6 +333,10 @@
         <p id="topSource">-</p>
       </div>
       <div class="card">
+        <h3>WhatsApp Queries</h3>
+        <p id="whatsappLeads">0</p>
+      </div>
+      <div class="card">
         <h3>Total Website Visits</h3>
         <p id="totalVisitors">0</p>
       </div>
@@ -389,8 +422,37 @@
       </div>
     </div>
 
+    <div class="card request-card">
+      <div class="section-head-row">
+        <div>
+          <h3>Queries</h3>
+          <div class="muted">WhatsApp आणि website वरून आलेले queries इथे दिसतील.</div>
+        </div>
+        <span class="badge" id="queryCount">0 queries</span>
+      </div>
+
+      <div class="mini-table-wrap">
+        <table class="mini-table">
+          <thead>
+            <tr>
+              <th>Time</th>
+              <th>Source</th>
+              <th>Name</th>
+              <th>Contact</th>
+              <th>Query</th>
+            </tr>
+          </thead>
+          <tbody id="queryRows">
+            <tr>
+              <td colspan="5" class="muted">Loading queries...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
     <div class="toolbar">
-      <input id="searchInput" type="search" placeholder="Search by name/email/service/source..." />
+      <input id="searchInput" type="search" placeholder="Search by name/email/phone/service/source..." />
       <span class="badge" id="countBadge">0 rows</span>
     </div>
 
@@ -402,6 +464,7 @@
             <th>Source</th>
             <th>Name</th>
             <th>Email</th>
+            <th>Phone</th>
             <th>Service</th>
             <th>Budget</th>
             <th>Details</th>
@@ -418,6 +481,7 @@
     const totalLeads = document.getElementById("totalLeads");
     const todayLeads = document.getElementById("todayLeads");
     const topSource = document.getElementById("topSource");
+    const whatsappLeads = document.getElementById("whatsappLeads");
     const countBadge = document.getElementById("countBadge");
     const leadRows = document.getElementById("leadRows");
     const searchInput = document.getElementById("searchInput");
@@ -431,9 +495,14 @@
   const topPageRows = document.getElementById("topPageRows");
   const adminRequestRows = document.getElementById("adminRequestRows");
   const adminRequestCount = document.getElementById("adminRequestCount");
+  const queryRows = document.getElementById("queryRows");
+  const queryCount = document.getElementById("queryCount");
 
     let allLeads = [];
     let adminRequestPollTimer = null;
+    let queryPollTimer = null;
+    let seenQueryIds = new Set();
+    let hasHydratedQueryRows = false;
 
     function showError(message) {
       errorBox.textContent = message;
@@ -584,6 +653,77 @@
       }).join("");
     }
 
+    function renderQueries(rows) {
+      if (!queryRows || !queryCount) return;
+
+      const queries = Array.isArray(rows) ? rows : [];
+      queryCount.textContent = `${queries.length} queries`;
+
+      if (!queries.length) {
+        queryRows.innerHTML = `
+          <tr>
+            <td colspan="5" class="muted">No queries yet.</td>
+          </tr>
+        `;
+
+        hasHydratedQueryRows = true;
+        return;
+      }
+
+      const shouldHighlightNew = hasHydratedQueryRows;
+      const nextSeenIds = new Set(seenQueryIds);
+
+      queryRows.innerHTML = queries.map((query) => {
+        const queryId = String(query.id || "").trim();
+        const isNewQuery = shouldHighlightNew && Boolean(queryId) && !seenQueryIds.has(queryId);
+
+        if (queryId) {
+          nextSeenIds.add(queryId);
+        }
+
+        const source = escapeHtml(query.source || "-");
+        const name = escapeHtml(query.name || "-");
+        const phone = escapeHtml(query.phone || "");
+        const email = escapeHtml(query.email || "");
+        const service = escapeHtml(query.service || "");
+        const budget = escapeHtml(query.budget || "");
+        const details = escapeHtml(query.details || "-");
+
+        const contactLines = [];
+        if (phone) {
+          contactLines.push(`<span>${phone}</span>`);
+        }
+        if (email) {
+          contactLines.push(`<span>${email}</span>`);
+        }
+
+        if (!contactLines.length) {
+          contactLines.push("<span>-</span>");
+        }
+
+        const queryMeta = [
+          service ? `Service: ${service}` : "",
+          budget ? `Budget: ${budget}` : ""
+        ].filter(Boolean).join(" • ");
+
+        return `
+          <tr class="query-row${isNewQuery ? " is-new-query" : ""}">
+            <td>${escapeHtml(fmtDate(query.createdAt))}</td>
+            <td>${source}</td>
+            <td>${name}</td>
+            <td><div class="query-contact">${contactLines.join("")}</div></td>
+            <td>
+              <div class="query-message">${details}</div>
+              ${queryMeta ? `<div class="muted">${queryMeta}</div>` : ""}
+            </td>
+          </tr>
+        `;
+      }).join("");
+
+      seenQueryIds = nextSeenIds;
+      hasHydratedQueryRows = true;
+    }
+
     async function updateAdminRequestStatus(requestId, action, button) {
       if (!requestId || !action) return;
       clearError();
@@ -613,17 +753,22 @@
     }
 
     function renderRows(rows) {
-      leadRows.innerHTML = rows.map((lead) => `
-        <tr>
-          <td>${fmtDate(lead.createdAt)}</td>
-          <td>${lead.source || "-"}</td>
-          <td>${lead.name || "-"}</td>
-          <td>${lead.email || "-"}</td>
-          <td>${lead.service || lead.packageName || "-"}</td>
-          <td>${lead.budget || lead.packagePrice || (lead.estimate?.total ? `₹${lead.estimate.total}` : "-")}</td>
-          <td>${lead.details || "-"}</td>
-        </tr>
-      `).join("");
+      leadRows.innerHTML = rows.map((lead) => {
+        const budgetValue = lead.budget || lead.packagePrice || (lead.estimate?.total ? `₹${lead.estimate.total}` : "-");
+
+        return `
+          <tr>
+            <td>${escapeHtml(fmtDate(lead.createdAt))}</td>
+            <td>${escapeHtml(lead.source || "-")}</td>
+            <td>${escapeHtml(lead.name || "-")}</td>
+            <td>${escapeHtml(lead.email || "-")}</td>
+            <td>${escapeHtml(lead.phone || "-")}</td>
+            <td>${escapeHtml(lead.service || lead.packageName || "-")}</td>
+            <td>${escapeHtml(budgetValue)}</td>
+            <td>${escapeHtml(lead.details || "-")}</td>
+          </tr>
+        `;
+      }).join("");
 
       countBadge.textContent = `${rows.length} rows`;
     }
@@ -640,6 +785,7 @@
           lead.source,
           lead.name,
           lead.email,
+          lead.phone,
           lead.service,
           lead.budget,
           lead.details,
@@ -677,6 +823,23 @@
       }
     }
 
+    async function loadQueriesSilently() {
+      if (!queryRows) return;
+
+      try {
+        const res = await fetch("/api/queries?limit=120", { cache: "no-store" });
+        const data = await res.json();
+
+        if (!res.ok || !data?.ok) {
+          return;
+        }
+
+        renderQueries(data.queries);
+      } catch (error) {
+        // keep silent during background polling
+      }
+    }
+
     function startAdminRequestPolling() {
       if (adminRequestPollTimer) return;
 
@@ -684,6 +847,15 @@
         if (document.visibilityState !== "visible") return;
         loadAdminAccessRequestsSilently();
       }, 1500);
+    }
+
+    function startQueryPolling() {
+      if (queryPollTimer) return;
+
+      queryPollTimer = setInterval(() => {
+        if (document.visibilityState !== "visible") return;
+        loadQueriesSilently();
+      }, 2500);
     }
 
     async function loadAdminData() {
@@ -702,21 +874,23 @@
 
         const requestOptions = { cache: "no-store" };
 
-        const [statsRes, leadsRes, visitorsRes, adminAccessRes] = await Promise.all([
+        const [statsRes, leadsRes, visitorsRes, adminAccessRes, queryRes] = await Promise.all([
           fetch("/api/leads/stats", requestOptions),
           fetch("/api/leads?limit=200", requestOptions),
           fetch("/api/visitors/stats", requestOptions),
-          fetch("/api/admin-access/requests", requestOptions)
+          fetch("/api/admin-access/requests", requestOptions),
+          fetch("/api/queries?limit=120", requestOptions)
         ]);
 
         const statsData = await statsRes.json();
         const leadsData = await leadsRes.json();
         const visitorsData = await visitorsRes.json();
         const adminAccessData = await adminAccessRes.json();
+        const queryData = await queryRes.json();
 
         if (
-          !statsRes.ok || !leadsRes.ok || !visitorsRes.ok || !adminAccessRes.ok ||
-          !statsData.ok || !leadsData.ok || !visitorsData.ok || !adminAccessData.ok
+          !statsRes.ok || !leadsRes.ok || !visitorsRes.ok || !adminAccessRes.ok || !queryRes.ok ||
+          !statsData.ok || !leadsData.ok || !visitorsData.ok || !adminAccessData.ok || !queryData.ok
         ) {
           throw new Error("Failed to load admin data");
         }
@@ -724,6 +898,9 @@
         totalLeads.textContent = statsData.total || 0;
         todayLeads.textContent = statsData.today || 0;
         topSource.textContent = computeTopSource(statsData.bySource);
+        if (whatsappLeads) {
+          whatsappLeads.textContent = Number(statsData.bySource?.["whatsapp-inbound"] || 0);
+        }
 
         totalVisitors.textContent = visitorsData.total || 0;
         todayVisitors.textContent = visitorsData.today || 0;
@@ -731,6 +908,7 @@
         renderDailyVisits(visitorsData.dailyVisits);
         renderTopPages(visitorsData.topPages);
         renderAdminRequests(adminAccessData.requests);
+        renderQueries(queryData.queries);
 
         allLeads = Array.isArray(leadsData.leads) ? leadsData.leads : [];
         renderRows(allLeads);
@@ -761,6 +939,7 @@
 
     loadAdminData();
     startAdminRequestPolling();
+    startQueryPolling();
     setInterval(loadAdminData, 15000);
   </script>
 </body>

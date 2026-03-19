@@ -22,6 +22,7 @@ Direct deploy link: `https://dashboard.render.com/blueprint/new?repo=https://git
 - Custom mobile-only section
 - Trusted device lock for custom section access
 - Lead capture and lead analytics
+- WhatsApp inbound query sync to admin panel (via webhook)
 - Visitor tracking and daily stats
 - Static frontend with Express backend
 
@@ -79,9 +80,11 @@ shravan-creative-studio/
 - `/login` - Login page
 - `/admin` - Admin panel
 - `/api/leads` - Leads API
+- `/api/queries` - Query inbox API (WhatsApp + website queries)
 - `/api/leads/stats` - Lead statistics
 - `/api/visitors/stats` - Visitor statistics
 - `/api/custom-access` - Custom section access check
+- `/api/whatsapp/webhook` - WhatsApp webhook (GET verify, POST incoming messages)
 
 ## Environment variables
 
@@ -93,8 +96,19 @@ Required values for deployment:
 - `ACCESS_PASSWORD=<your password>`
 - `ADMIN_PASSWORD=<your admin password>`
 - `SESSION_SECRET=<strong random secret>`
+- `WHATSAPP_WEBHOOK_VERIFY_TOKEN=<random webhook verify token>`
 - `CUSTOM_SECTION_PHONE_ONLY=true`
 - `CUSTOM_SECTION_REQUIRE_TRUSTED_DEVICE=true`
+
+## WhatsApp webhook setup (for inbound queries)
+
+1. Set `WHATSAPP_WEBHOOK_VERIFY_TOKEN` in `.env` (and in Render env vars for production).
+2. In Meta WhatsApp Cloud API webhook settings, use callback URL:
+   - `https://<your-domain>/api/whatsapp/webhook`
+3. Enter the same verify token value there.
+4. Subscribe to `messages` webhook field.
+
+Once configured, incoming WhatsApp messages are stored as leads with source `whatsapp-inbound` and shown in `/admin`.
 
 ## Deployment
 

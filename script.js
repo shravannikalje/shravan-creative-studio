@@ -1,11 +1,19 @@
-const WHATSAPP_NUMBER = "7823802792"; // Orders will go to this number; 10-digit auto-converts to 91XXXXXXXXXX
-
 const menuToggle = document.getElementById("menuToggle");
 const mainNav = document.getElementById("mainNav");
 const themeToggle = document.getElementById("themeToggle");
-const quickWhatsappLinks = document.querySelectorAll('[data-whatsapp="quick"]');
-const packageWhatsappLinks = document.querySelectorAll('[data-whatsapp="package"]');
-const whatsappForm = document.getElementById("whatsappForm");
+const quickQueryLinks = document.querySelectorAll('[data-query="quick"], [data-whatsapp="quick"]');
+const packageQueryLinks = document.querySelectorAll('[data-query="package"], [data-whatsapp="package"]');
+const queryForm = document.getElementById("queryForm") || document.getElementById("whatsappForm");
+const contactSection = document.getElementById("contact");
+const contactNameInput = document.getElementById("name");
+const contactEmailInput = document.getElementById("email");
+const contactServiceInput = document.getElementById("service");
+const contactBudgetInput = document.getElementById("budget");
+const contactDetailsInput = document.getElementById("details");
+const contactSubmitButton = queryForm ? queryForm.querySelector('button[type="submit"]') : null;
+const submitButtonDefaultText = contactSubmitButton
+    ? (contactSubmitButton.textContent || "Submit Query").trim()
+    : "Submit Query";
 const filterButtons = document.querySelectorAll(".filter-btn");
 const portfolioItems = document.querySelectorAll(".project-card");
 const revealElements = document.querySelectorAll(".reveal");
@@ -20,6 +28,7 @@ const liveTime = document.getElementById("liveTime");
 const liveWindow = document.getElementById("liveWindow");
 const liveProjects = document.getElementById("liveProjects");
 const liveQueue = document.getElementById("liveQueue");
+const deployVersionElement = document.getElementById("deployVersion");
 
 const estimatorForm = document.getElementById("estimatorForm");
 const estService = document.getElementById("estService");
@@ -41,6 +50,7 @@ let localStatusTimer = null;
 let customContentWatchTimer = null;
 let lastCustomContentHtml = "";
 let customAccessAllowed = null;
+let queryToastTimer = null;
 
 const THEME_STORAGE_KEY = "designer-theme";
 const LEAD_API_ENDPOINT = "/api/leads";
@@ -147,33 +157,6 @@ function getOrCreateCustomDeviceToken() {
     }
 }
 
-function normalizeWhatsAppNumber(rawNumber) {
-    const cleaned = String(rawNumber || "").replace(/\D/g, "");
-
-    if (cleaned.length === 10) {
-        return `91${cleaned}`;
-    }
-
-    return cleaned;
-}
-
-function buildWhatsAppUrl(message) {
-    const cleanedNumber = normalizeWhatsAppNumber(WHATSAPP_NUMBER);
-    if (!cleanedNumber) {
-        alert("Please set a valid WhatsApp number in script.js");
-        return null;
-    }
-
-    const encodedMessage = encodeURIComponent(message);
-    return `https://wa.me/${cleanedNumber}?text=${encodedMessage}`;
-}
-
-function openWhatsApp(message) {
-    const url = buildWhatsAppUrl(message);
-    if (!url) return;
-    window.open(url, "_blank", "noopener,noreferrer");
-}
-
 function formatCurrencyINR(value) {
     return new Intl.NumberFormat("en-IN", {
         style: "currency",
@@ -182,43 +165,222 @@ function formatCurrencyINR(value) {
     }).format(value);
 }
 
-function buildQuickMessage() {
-    return [
-        "Hello Shravan,",
-        "I visited your portfolio website.",
-        "I want to discuss a graphic design project.",
-        "Please share your availability and packages."
-    ].join("\n");
+function formatDeployTimestamp(value) {
+    const parsedDate = new Date(value);
+    if (Number.isNaN(parsedDate.getTime())) {
+        return "";
+    }
+
+    return new Intl.DateTimeFormat("en-IN", {
+        timeZone: "Asia/Kolkata",
+        day: "2-digit",
+        month: "short",
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: true
+    }).format(parsedDate);
 }
 
-function buildPackageMessage(packageName, packagePrice) {
-    return [
-        "Hello Shravan 👋",
-        "I checked your pricing section.",
-        `I want to choose the ${packageName} package (${packagePrice}).`,
-        "Please share next steps to start."
-    ].join("\n");
+async function loadDeployVersionBadge() {
+    if (!deployVersionElement) return;
+
+    if (window.location.protocol === "file:") {
+        deployVersionElement.textContent = "Build: local preview";
+        deployVersionElement.removeAttribute("title");
+        return;
+    }
+
+    deployVersionElement.textContent = "Build: checking...";
+
+    try {
+        const response = await fetch(`/api/version?v=${Date.now()}`, {
+            cache: "no-store"
+        });
+
+        if (!response.ok) {
+            throw new Error(`Version endpoint failed: ${response.status}`);
+        }
+
+        const payload = await response.json();
+        const version = String(payload?.version || "").trim() || "unknown";
+        const commit = String(payload?.commit || "").trim();
+        const branch = String(payload?.branch || "").trim();
+        const bootedAt = formatDeployTimestamp(payload?.bootedAt);
+
+        const badgeParts = [`Build: v${version}`];
+        if (commit) {
+            badgeParts.push(`commit ${commit}`);
+        }
+        if (bootedAt) {
+            badgeParts.push(`boot ${bootedAt}`);
+        }
+
+        deployVersionElement.textContent = badgeParts.join(" • ");
+
+        const tooltipParts = [
+            branch ? `Branch: ${branch}` : "",
+            payload?.buildTag ? `Tag: ${payload.buildTag}` : ""
+        ].filter(Boolean);
+
+        if (tooltipParts.length) {
+            deployVersionElement.title = tooltipParts.join(" | ");
+        } else {
+            deployVersionElement.removeAttribute("title");
+        }
+    } catch (error) {
+        deployVersionElement.textContent = "Build: unavailable";
+        deployVersionElement.removeAttribute("title");
+    }
 }
 
-function buildEstimateMessage(estimate) {
+function ensureQueryToastElement() {
+    const existingToast = document.getElementById("queryToast");
+    if (existingToast) {
+        return existingToast;
+    }
+
+    const toast = document.createElement("div");
+    toast.id = "queryToast";
+    toast.className = "query-toast";
+    toast.setAttribute("role", "status");
+    toast.setAttribute("aria-live", "polite");
+    document.body.appendChild(toast);
+    return toast;
+}
+
+function triggerQueryFormAnimation(type = "pulse") {
+    if (!queryForm) return;
+
+    const animationClasses = ["query-submit-pulse", "query-submit-success", "query-submit-error"];
+    queryForm.classList.remove(...animationClasses);
+    void queryForm.offsetWidth;
+
+    if (type === "success") {
+        queryForm.classList.add("query-submit-success");
+        return;
+    }
+
+    if (type === "error") {
+        queryForm.classList.add("query-submit-error");
+        return;
+    }
+
+    queryForm.classList.add("query-submit-pulse");
+}
+
+function setQueryFormSubmittingState(isSubmitting) {
+    if (!queryForm) return;
+
+    queryForm.classList.toggle("query-submitting", Boolean(isSubmitting));
+
+    if (!contactSubmitButton) return;
+
+    contactSubmitButton.disabled = Boolean(isSubmitting);
+    contactSubmitButton.classList.toggle("is-loading", Boolean(isSubmitting));
+    contactSubmitButton.textContent = isSubmitting ? "Submitting..." : submitButtonDefaultText;
+}
+
+function showQuerySubmitMessage(message, tone = "info") {
+    const toast = ensureQueryToastElement();
+    const safeTone = ["success", "error", "info"].includes(tone) ? tone : "info";
+
+    toast.textContent = String(message || "").trim();
+    toast.classList.remove("success", "error", "info", "show");
+    toast.classList.add(safeTone);
+
+    window.requestAnimationFrame(() => {
+        toast.classList.add("show");
+    });
+
+    if (queryToastTimer) {
+        clearTimeout(queryToastTimer);
+    }
+
+    queryToastTimer = window.setTimeout(() => {
+        toast.classList.remove("show");
+    }, 2600);
+}
+
+function getBudgetRangeFromAmount(amount) {
+    const numericAmount = Number(amount);
+    if (!Number.isFinite(numericAmount)) return "";
+
+    if (numericAmount <= 5000) return "Under ₹5,000";
+    if (numericAmount <= 15000) return "₹5,000 - ₹15,000";
+    if (numericAmount <= 30000) return "₹15,000 - ₹30,000";
+    return "₹30,000+";
+}
+
+function mapPackagePriceToBudget(packagePrice) {
+    const numericAmount = Number(String(packagePrice || "").replace(/[^0-9]/g, ""));
+    if (!Number.isFinite(numericAmount) || numericAmount <= 0) return "";
+    return getBudgetRangeFromAmount(numericAmount);
+}
+
+function prefillContactFormAndFocus({ service = "", budget = "", details = "" } = {}) {
+    if (contactServiceInput && service) {
+        const hasMatchingService = [...contactServiceInput.options].some((option) => option.value === service);
+        if (hasMatchingService) {
+            contactServiceInput.value = service;
+        }
+    }
+
+    if (contactBudgetInput && budget) {
+        const hasMatchingBudget = [...contactBudgetInput.options].some((option) => option.value === budget);
+        if (hasMatchingBudget) {
+            contactBudgetInput.value = budget;
+        }
+    }
+
+    if (contactDetailsInput && details) {
+        const normalizedDetails = String(details).trim();
+        const existingDetails = contactDetailsInput.value.trim();
+
+        if (!existingDetails) {
+            contactDetailsInput.value = normalizedDetails;
+        } else if (!existingDetails.includes(normalizedDetails)) {
+            contactDetailsInput.value = `${existingDetails}\n\n${normalizedDetails}`;
+        }
+    }
+
+    if (contactSection) {
+        contactSection.scrollIntoView({ behavior: "smooth", block: "start" });
+    }
+
+    window.setTimeout(() => {
+        if (!contactDetailsInput) return;
+
+        contactDetailsInput.focus();
+        const contentLength = contactDetailsInput.value.length;
+        contactDetailsInput.setSelectionRange(contentLength, contentLength);
+    }, 280);
+}
+
+function buildQuickQueryTemplate() {
+    return "Hi, mala design project sathi query karaychi aahe. कृपया मला callback करा.";
+}
+
+function buildPackageQueryTemplate(packageName, packagePrice) {
+    return `Hi, mala ${packageName} package (${packagePrice}) बद्दल details हवी आहेत. कृपया process share करा.`;
+}
+
+function buildEstimateSummary(estimate) {
     return [
-        "Hello Shravan 👋",
-        "I used your real-time estimator.",
+        "Estimated Query Details:",
         `Service: ${estimate.serviceLabel}`,
         `Delivery: ${estimate.deliveryLabel}`,
         `Revisions: ${estimate.revisions}`,
         `Creatives: ${estimate.quantity}`,
         `Assets Ready: ${estimate.assetsReady ? "Yes" : "No"}`,
-        `Estimated Budget: ${formatCurrencyINR(estimate.total)}`,
-        "Please confirm the final quote and next steps."
+        `Estimated Budget: ${formatCurrencyINR(estimate.total)}`
     ].join("\n");
 }
 
 async function storeLead(leadPayload) {
-    if (window.location.protocol === "file:") return;
+    if (window.location.protocol === "file:") return false;
 
     try {
-        await fetch(LEAD_API_ENDPOINT, {
+        const response = await fetch(LEAD_API_ENDPOINT, {
             method: "POST",
             headers: {
                 "Content-Type": "application/json"
@@ -226,8 +388,10 @@ async function storeLead(leadPayload) {
             body: JSON.stringify(leadPayload),
             keepalive: true
         });
+
+        return response.ok;
     } catch (error) {
-        // lead capture should never block user flow
+        return false;
     }
 }
 
@@ -548,22 +712,14 @@ function setupEstimator() {
             event.preventDefault();
             if (!latestEstimate) return;
 
-            storeLead({
-                source: "estimate",
+            prefillContactFormAndFocus({
                 service: latestEstimate.serviceLabel,
-                budget: formatCurrencyINR(latestEstimate.total),
-                details: "Lead from real-time estimator",
-                estimate: {
-                    service: latestEstimate.serviceLabel,
-                    delivery: latestEstimate.deliveryLabel,
-                    revisions: latestEstimate.revisions,
-                    quantity: latestEstimate.quantity,
-                    assetsReady: latestEstimate.assetsReady,
-                    total: latestEstimate.total
-                }
+                budget: getBudgetRangeFromAmount(latestEstimate.total),
+                details: buildEstimateSummary(latestEstimate)
             });
 
-            openWhatsApp(buildEstimateMessage(latestEstimate));
+            triggerQueryFormAnimation("pulse");
+            showQuerySubmitMessage("Estimate details form मध्ये भरले आहेत. कृपया नाव/email टाकून Submit Query करा.", "info");
         });
     }
 
@@ -637,73 +793,78 @@ if (menuToggle && mainNav) {
     });
 }
 
-quickWhatsappLinks.forEach((link) => {
+quickQueryLinks.forEach((link) => {
     link.addEventListener("click", (event) => {
         event.preventDefault();
 
-        storeLead({
-            source: "quick-whatsapp",
-            details: "Quick CTA clicked"
+        prefillContactFormAndFocus({
+            service: "Social Media Creatives",
+            details: buildQuickQueryTemplate()
         });
 
-        openWhatsApp(buildQuickMessage());
+        triggerQueryFormAnimation("pulse");
+        showQuerySubmitMessage("Query form open झाला आहे. Details तपासून Submit Query करा.", "info");
     });
 });
 
-packageWhatsappLinks.forEach((link) => {
+packageQueryLinks.forEach((link) => {
     link.addEventListener("click", (event) => {
         event.preventDefault();
         const packageName = link.dataset.package || "Selected";
         const packagePrice = link.dataset.price || "Custom";
 
-        storeLead({
-            source: "package",
-            packageName,
-            packagePrice,
-            details: "Package selection clicked"
+        prefillContactFormAndFocus({
+            service: "Social Media Creatives",
+            budget: mapPackagePriceToBudget(packagePrice),
+            details: buildPackageQueryTemplate(packageName, packagePrice)
         });
 
-        openWhatsApp(buildPackageMessage(packageName, packagePrice));
+        triggerQueryFormAnimation("pulse");
+        showQuerySubmitMessage("Package query form मध्ये भरली आहे. कृपया Submit Query करा.", "info");
     });
 });
 
-if (whatsappForm) {
-    whatsappForm.addEventListener("submit", (event) => {
+if (queryForm) {
+    queryForm.addEventListener("submit", async (event) => {
         event.preventDefault();
 
-        const name = document.getElementById("name").value.trim();
-        const email = document.getElementById("email").value.trim();
-        const service = document.getElementById("service").value;
-        const budget = document.getElementById("budget").value;
-        const details = document.getElementById("details").value.trim();
+        const name = contactNameInput ? contactNameInput.value.trim() : "";
+        const email = contactEmailInput ? contactEmailInput.value.trim() : "";
+        const service = contactServiceInput ? contactServiceInput.value : "";
+        const budget = contactBudgetInput ? contactBudgetInput.value : "";
+        const details = contactDetailsInput ? contactDetailsInput.value.trim() : "";
 
         if (!name || !email || !service || !budget || !details) {
-            alert("Please fill all fields before sending.");
+            triggerQueryFormAnimation("error");
+            showQuerySubmitMessage("Please fill all fields before submitting query.", "error");
             return;
         }
 
-        const formMessage = [
-            "Hello Shravan 👋",
-            "I want to discuss a design project.",
-            "",
-            `Name: ${name}`,
-            `Email: ${email}`,
-            `Service: ${service}`,
-            `Budget: ${budget}`,
-            `Project Details: ${details}`
-        ].join("\n");
+        triggerQueryFormAnimation("pulse");
+        setQueryFormSubmittingState(true);
 
-        storeLead({
-            source: "contact-form",
-            name,
-            email,
-            service,
-            budget,
-            details
-        });
+        try {
+            const saved = await storeLead({
+                source: "contact-query",
+                name,
+                email,
+                service,
+                budget,
+                details
+            });
 
-        openWhatsApp(formMessage);
-        whatsappForm.reset();
+            if (!saved) {
+                triggerQueryFormAnimation("error");
+                showQuerySubmitMessage("Query submit zali nahi. कृपया पुन्हा try करा.", "error");
+                return;
+            }
+
+            triggerQueryFormAnimation("success");
+            showQuerySubmitMessage("तुमची query submit झाली. Admin panel मध्ये लगेच दिसेल.", "success");
+            queryForm.reset();
+        } finally {
+            setQueryFormSubmittingState(false);
+        }
     });
 }
 
@@ -743,6 +904,7 @@ startCustomContentWatcher();
 setupEstimator();
 setupNavActiveTracking();
 connectRealtimeStatus();
+loadDeployVersionBadge();
 setupThemeToggle();
 handleScrollUi();
 

@@ -12,10 +12,20 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 const ROOT_DIR = __dirname;
+let APP_VERSION = "0.0.0";
+
+try {
+  const packageJson = require(path.join(ROOT_DIR, "package.json"));
+  APP_VERSION = String(packageJson?.version || APP_VERSION).trim() || APP_VERSION;
+} catch {
+  APP_VERSION = "0.0.0";
+}
+
 const DATA_DIR = path.join(ROOT_DIR, "data");
 const LEADS_FILE = path.join(DATA_DIR, "leads.json");
 const CUSTOM_DEVICES_FILE = path.join(DATA_DIR, "custom-devices.json");
 const VISITORS_FILE = path.join(DATA_DIR, "visitors.json");
+const VISITOR_AUTO_STATE_FILE = path.join(DATA_DIR, "visitor-auto-state.json");
 const ADMIN_ACCESS_REQUESTS_FILE = path.join(DATA_DIR, "admin-access-requests.json");
 const LOGIN_FILE = path.join(ROOT_DIR, "login.html");
 const ADMIN_FILE = path.join(ROOT_DIR, "admin.html");
@@ -27,6 +37,15 @@ const ADMIN_PASSWORD = String(process.env.ADMIN_PASSWORD || ACCESS_PASSWORD || "
 const OWNER_DIRECT_ADMIN_PASSWORD = String(process.env.OWNER_DIRECT_ADMIN_PASSWORD || "7823").trim();
 const GOOGLE_CLIENT_ID = String(process.env.GOOGLE_CLIENT_ID || "").trim();
 const SESSION_SECRET = String(process.env.SESSION_SECRET || "change-this-session-secret").trim();
+const WHATSAPP_WEBHOOK_VERIFY_TOKEN = String(process.env.WHATSAPP_WEBHOOK_VERIFY_TOKEN || "").trim();
+const BUILD_TAG = String(process.env.BUILD_TAG || "").trim();
+const DEPLOY_COMMIT = String(
+  process.env.RENDER_GIT_COMMIT || process.env.VERCEL_GIT_COMMIT_SHA || process.env.GITHUB_SHA || ""
+).trim();
+const DEPLOY_BRANCH = String(
+  process.env.RENDER_GIT_BRANCH || process.env.VERCEL_GIT_COMMIT_REF || process.env.GITHUB_REF_NAME || ""
+).trim();
+const APP_BOOTED_AT = new Date().toISOString();
 const ALLOWED_EMAILS = String(process.env.ALLOWED_EMAILS || "")
   .split(",")
   .map((email) => email.trim().toLowerCase())
@@ -44,6 +63,17 @@ const CUSTOM_SECTION_PHONE_ONLY = String(process.env.CUSTOM_SECTION_PHONE_ONLY |
   .toLowerCase() !== "false";
 const CUSTOM_SECTION_REQUIRE_TRUSTED_DEVICE =
   String(process.env.CUSTOM_SECTION_REQUIRE_TRUSTED_DEVICE || "true").trim().toLowerCase() !== "false";
+const QUERY_LEAD_SOURCES = new Set([
+  "whatsapp-inbound",
+  "quick-whatsapp",
+  "package",
+  "estimate",
+  "contact-form",
+  "quick-query",
+  "package-interest",
+  "estimate-query",
+  "contact-query"
+]);
 
 function toNonNegativeInteger(value, fallback = 0) {
   const parsed = Number(value);
@@ -53,6 +83,8 @@ function toNonNegativeInteger(value, fallback = 0) {
 
 const VISITOR_START_TOTAL = toNonNegativeInteger(process.env.VISITOR_START_TOTAL, 500);
 const VISITOR_START_TODAY = toNonNegativeInteger(process.env.VISITOR_START_TODAY, 100);
+const VISITOR_AUTO_TOTAL_PER_DAY = toNonNegativeInteger(process.env.VISITOR_AUTO_TOTAL_PER_DAY, 50);
+const VISITOR_AUTO_DAILY_BOOST = toNonNegativeInteger(process.env.VISITOR_AUTO_DAILY_BOOST, 20);
 
 let visitorRuntimeTotalOffset = null;
 let visitorRuntimeTodayOffset = null;
@@ -262,6 +294,93 @@ async function writeVisitors(visitors) {
   await fs.writeFile(VISITORS_FILE, JSON.stringify(visitors, null, 2), "utf8");
 }
 
+function isIsoDateOnly(value) {
+  return /^\d{4}-\d{2}-\d{2}$/.test(String(value || "").trim());
+}
+
+function parseIsoDateOnlyAsUtc(value) {
+  if (!isIsoDateOnly(value)) return null;
+
+  const parsed = new Date(`${value}T00:00:00.000Z`);
+  return Number.isNaN(parsed.getTime()) ? null : parsed;
+}
+
+function getTodayDateKeyUtc() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function diffDateKeysInDays(startDateKey, endDateKey) {
+  const start = parseIsoDateOnlyAsUtc(startDateKey);
+  const end = parseIsoDateOnlyAsUtc(endDateKey);
+
+  if (!start || !end) return 0;
+
+  const diffMs = end.getTime() - start.getTime();
+  if (diffMs <= 0) return 0;
+
+  return Math.floor(diffMs / (24 * 60 * 60 * 1000));
+}
+
+async function ensureVisitorAutoStateStorage() {
+  await fs.mkdir(DATA_DIR, { recursive: true });
+
+  try {
+    await fs.access(VISITOR_AUTO_STATE_FILE);
+  } catch {
+    const initialState = {
+      baseDate: getTodayDateKeyUtc()
+    };
+
+    await fs.writeFile(VISITOR_AUTO_STATE_FILE, JSON.stringify(initialState, null, 2), "utf8");
+  }
+}
+
+async function readVisitorAutoState() {
+  await ensureVisitorAutoStateStorage();
+
+  try {
+    const raw = await fs.readFile(VISITOR_AUTO_STATE_FILE, "utf8");
+    const parsed = JSON.parse(raw);
+    const baseDate = String(parsed?.baseDate || "").trim();
+
+    if (isIsoDateOnly(baseDate)) {
+      return { baseDate };
+    }
+  } catch {
+    // fallback handled below
+  }
+
+  const fallbackState = {
+    baseDate: getTodayDateKeyUtc()
+  };
+
+  await fs.writeFile(VISITOR_AUTO_STATE_FILE, JSON.stringify(fallbackState, null, 2), "utf8");
+  return fallbackState;
+}
+
+async function getVisitorAutoBoost(todayDateKey = getTodayDateKeyUtc()) {
+  if (VISITOR_AUTO_TOTAL_PER_DAY <= 0 && VISITOR_AUTO_DAILY_BOOST <= 0) {
+    return {
+      totalBoost: 0,
+      todayBoost: 0,
+      baseDate: todayDateKey,
+      elapsedDays: 0
+    };
+  }
+
+  const state = await readVisitorAutoState();
+  const normalizedBaseDate = isIsoDateOnly(state.baseDate) ? state.baseDate : todayDateKey;
+  const baseDate = normalizedBaseDate > todayDateKey ? todayDateKey : normalizedBaseDate;
+  const elapsedDays = diffDateKeysInDays(baseDate, todayDateKey);
+
+  return {
+    totalBoost: (elapsedDays * VISITOR_AUTO_TOTAL_PER_DAY) + VISITOR_AUTO_DAILY_BOOST,
+    todayBoost: VISITOR_AUTO_DAILY_BOOST,
+    baseDate,
+    elapsedDays
+  };
+}
+
 async function recordVisitor(req) {
   try {
     const pageRequested = req.path;
@@ -393,6 +512,226 @@ function buildLeadRecord(body, req) {
     userAgent: sanitizeText(req.headers["user-agent"] || "", 300),
     createdAt: new Date().toISOString()
   };
+}
+
+function isQueryLeadRecord(lead) {
+  const source = String(lead?.source || "").trim().toLowerCase();
+  if (!source) return false;
+
+  if (source.includes("query")) {
+    return true;
+  }
+
+  if (source.includes("whatsapp")) {
+    return true;
+  }
+
+  return QUERY_LEAD_SOURCES.has(source);
+}
+
+function mapLeadAsQueryRecordForClient(lead) {
+  return {
+    id: sanitizeText(lead?.id || "", 80),
+    source: sanitizeText(lead?.source || "", 60),
+    name: sanitizeText(lead?.name || "", 90),
+    email: sanitizeText(lead?.email || "", 140),
+    phone: sanitizeText(lead?.phone || "", 30),
+    service: sanitizeText(lead?.service || lead?.packageName || "", 90),
+    budget: sanitizeText(lead?.budget || lead?.packagePrice || "", 80),
+    details: sanitizeText(lead?.details || "", 1200),
+    createdAt: sanitizeText(lead?.createdAt || "", 80)
+  };
+}
+
+function parseWhatsAppMessageTimestamp(rawTimestamp) {
+  const parsed = Number(rawTimestamp);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    return new Date().toISOString();
+  }
+
+  const epochMs = parsed > 10_000_000_000 ? parsed : parsed * 1000;
+  const parsedDate = new Date(epochMs);
+  if (Number.isNaN(parsedDate.getTime())) {
+    return new Date().toISOString();
+  }
+
+  return parsedDate.toISOString();
+}
+
+function getWhatsAppMessagePreview(message) {
+  const type = sanitizeText(message?.type || "", 40).toLowerCase();
+
+  switch (type) {
+    case "text":
+      return sanitizeText(message?.text?.body || "", 1200) || "[text message]";
+    case "button":
+      return sanitizeText(message?.button?.text || "", 1200) || "[button reply]";
+    case "interactive": {
+      const interactive = message?.interactive || {};
+      const buttonReply = sanitizeText(
+        interactive?.button_reply?.title || interactive?.button_reply?.id || "",
+        280
+      );
+      const listReply = sanitizeText(
+        interactive?.list_reply?.title || interactive?.list_reply?.description || interactive?.list_reply?.id || "",
+        280
+      );
+
+      return sanitizeText(buttonReply || listReply || "[interactive message]", 1200);
+    }
+    case "image":
+      return sanitizeText(message?.image?.caption || "", 1200) || "[image]";
+    case "video":
+      return sanitizeText(message?.video?.caption || "", 1200) || "[video]";
+    case "document":
+      return sanitizeText(message?.document?.caption || "", 1200)
+        || sanitizeText(message?.document?.filename || "", 280)
+        || "[document]";
+    case "audio":
+      return "[audio message]";
+    case "sticker":
+      return "[sticker]";
+    case "location": {
+      const locationName = sanitizeText(message?.location?.name || "", 120);
+      const locationAddress = sanitizeText(message?.location?.address || "", 300);
+      const lat = Number(message?.location?.latitude);
+      const lng = Number(message?.location?.longitude);
+      const coords = Number.isFinite(lat) && Number.isFinite(lng)
+        ? `${lat}, ${lng}`
+        : "";
+
+      return sanitizeText(
+        [locationName, locationAddress, coords].filter(Boolean).join(" - "),
+        1200
+      ) || "[location shared]";
+    }
+    case "contacts":
+      return "[contact card shared]";
+    default:
+      return sanitizeText(`[${type || "unknown"} message]`, 1200);
+  }
+}
+
+function buildWhatsAppDedupKey(message, previewText = "") {
+  const messageId = sanitizeText(message?.id || "", 220);
+  if (messageId) {
+    return `id:${messageId}`;
+  }
+
+  const from = sanitizeText(message?.from || "", 30);
+  const timestamp = sanitizeText(message?.timestamp || "", 40);
+  const compactPreview = sanitizeText(previewText || "", 180);
+  return sanitizeText(`fallback:${from}:${timestamp}:${compactPreview}`, 300);
+}
+
+function buildWhatsAppLeadRecord({ message, contactName, businessNumber, previewText }) {
+  const messageType = sanitizeText(message?.type || "unknown", 40).toLowerCase() || "unknown";
+  const fromNumber = sanitizeText(message?.from || "", 30);
+  const phoneNumber = fromNumber ? `+${fromNumber}` : "";
+  const messagePreview = sanitizeText(previewText || getWhatsAppMessagePreview(message), 1200);
+  const summaryParts = [
+    messagePreview,
+    phoneNumber ? `From: ${phoneNumber}` : "",
+    businessNumber ? `To: ${businessNumber}` : "",
+    `Type: ${messageType}`
+  ].filter(Boolean);
+
+  return {
+    id: `${Date.now()}-${Math.floor(Math.random() * 100000)}`,
+    source: "whatsapp-inbound",
+    name: sanitizeText(contactName || "WhatsApp User", 90),
+    email: "",
+    phone: phoneNumber,
+    service: "WhatsApp Query",
+    budget: "",
+    details: sanitizeText(summaryParts.join(" | "), 1200),
+    packageName: "",
+    packagePrice: "",
+    estimate: null,
+    userAgent: "whatsapp-webhook",
+    waMessageId: sanitizeText(message?.id || "", 220),
+    waMessageType: messageType,
+    createdAt: parseWhatsAppMessageTimestamp(message?.timestamp)
+  };
+}
+
+async function ingestWhatsAppWebhookPayload(payload) {
+  const entries = Array.isArray(payload?.entry) ? payload.entry : [];
+  if (payload?.object !== "whatsapp_business_account" || !entries.length) {
+    return { received: 0, inserted: 0 };
+  }
+
+  const leads = await readLeads();
+  const existingMessageKeys = new Set(
+    leads
+      .map((lead) => {
+        const waMessageId = sanitizeText(lead?.waMessageId || "", 220);
+        if (waMessageId) {
+          return `id:${waMessageId}`;
+        }
+
+        return sanitizeText(lead?.whatsappDedupKey || "", 300);
+      })
+      .filter(Boolean)
+  );
+
+  let received = 0;
+  let inserted = 0;
+
+  for (const entry of entries) {
+    const changes = Array.isArray(entry?.changes) ? entry.changes : [];
+
+    for (const change of changes) {
+      const value = change?.value || {};
+      const contacts = Array.isArray(value?.contacts) ? value.contacts : [];
+      const messages = Array.isArray(value?.messages) ? value.messages : [];
+
+      if (!messages.length) {
+        continue;
+      }
+
+      const businessNumber = sanitizeText(value?.metadata?.display_phone_number || "", 40);
+      const contactNameByWaId = new Map(
+        contacts
+          .map((contact) => [
+            sanitizeText(contact?.wa_id || "", 30),
+            sanitizeText(contact?.profile?.name || "", 90)
+          ])
+          .filter(([waId]) => Boolean(waId))
+      );
+
+      for (const message of messages) {
+        received += 1;
+        const previewText = getWhatsAppMessagePreview(message);
+        const dedupKey = buildWhatsAppDedupKey(message, previewText);
+        if (!dedupKey || existingMessageKeys.has(dedupKey)) {
+          continue;
+        }
+
+        const waId = sanitizeText(message?.from || "", 30);
+        const contactName = contactNameByWaId.get(waId) || "";
+
+        const record = buildWhatsAppLeadRecord({
+          message,
+          contactName,
+          businessNumber,
+          previewText
+        });
+
+        record.whatsappDedupKey = dedupKey;
+
+        leads.push(record);
+        existingMessageKeys.add(dedupKey);
+        inserted += 1;
+      }
+    }
+  }
+
+  if (inserted > 0) {
+    await writeLeads(leads.slice(-2000));
+  }
+
+  return { received, inserted };
 }
 
 function isAllowedEmail(email) {
@@ -647,6 +986,52 @@ function getStudioStatus() {
 
 app.get("/healthz", (req, res) => {
   res.json({ ok: true });
+});
+
+app.get("/api/version", (req, res) => {
+  const shortCommit = DEPLOY_COMMIT ? DEPLOY_COMMIT.slice(0, 7) : "";
+
+  res.setHeader("Cache-Control", "no-store");
+  res.json({
+    ok: true,
+    version: sanitizeText(APP_VERSION, 40) || "0.0.0",
+    buildTag: sanitizeText(BUILD_TAG, 120),
+    commit: sanitizeText(shortCommit, 20),
+    branch: sanitizeText(DEPLOY_BRANCH, 120),
+    bootedAt: APP_BOOTED_AT,
+    timestamp: new Date().toISOString()
+  });
+});
+
+app.get("/api/whatsapp/webhook", (req, res) => {
+  const mode = sanitizeText(req.query?.["hub.mode"] || "", 40).toLowerCase();
+  const verifyToken = sanitizeText(req.query?.["hub.verify_token"] || "", 220);
+  const challenge = sanitizeText(req.query?.["hub.challenge"] || "", 500);
+
+  if (!WHATSAPP_WEBHOOK_VERIFY_TOKEN) {
+    return res.status(503).send("WHATSAPP_WEBHOOK_VERIFY_TOKEN is not configured");
+  }
+
+  if (mode === "subscribe" && verifyToken === WHATSAPP_WEBHOOK_VERIFY_TOKEN) {
+    return res.status(200).send(challenge || "ok");
+  }
+
+  return res.status(403).send("Forbidden");
+});
+
+app.post("/api/whatsapp/webhook", async (req, res) => {
+  try {
+    const summary = await ingestWhatsAppWebhookPayload(req.body);
+
+    if (summary.inserted > 0) {
+      console.log(`[whatsapp] Stored ${summary.inserted} inbound message(s) from ${summary.received} received event(s)`);
+    }
+
+    return res.status(200).json({ ok: true, ...summary });
+  } catch (error) {
+    console.error("Failed to process WhatsApp webhook", error);
+    return res.status(500).json({ ok: false, error: "Failed to process WhatsApp webhook" });
+  }
 });
 
 app.get(["/login", "/login.html"], async (req, res) => {
@@ -966,6 +1351,7 @@ app.use((req, res, next) => {
     "/auth/google",
     "/auth/me",
     "/auth/logout",
+    "/api/whatsapp/webhook",
     "/healthz",
     "/favicon.ico"
   ]);
@@ -1111,6 +1497,26 @@ app.get("/api/leads", requireAdmin, async (req, res) => {
   }
 });
 
+app.get("/api/queries", requireAdmin, async (req, res) => {
+  try {
+    const limit = Math.min(Math.max(Number(req.query.limit) || 80, 1), 300);
+    const leads = await readLeads();
+    const queryLeads = leads.filter(isQueryLeadRecord);
+    const recent = queryLeads
+      .slice(-limit)
+      .reverse()
+      .map(mapLeadAsQueryRecordForClient);
+
+    res.json({
+      ok: true,
+      total: queryLeads.length,
+      queries: recent
+    });
+  } catch (error) {
+    res.status(500).json({ ok: false, error: "Failed to read queries" });
+  }
+});
+
 app.get("/api/leads/stats", requireAdmin, async (req, res) => {
   try {
     const leads = await readLeads();
@@ -1138,12 +1544,16 @@ app.get("/api/visitors/stats", requireAdmin, async (req, res) => {
   try {
     const visitors = await readVisitors();
     const pageVisits = visitors.filter((visit) => shouldIncludeInPageAnalytics(visit.page));
-    const todayDate = new Date().toISOString().slice(0, 10);
+    const todayDate = getTodayDateKeyUtc();
 
     const todayCount = pageVisits.filter((visit) => {
       const visitDate = String(visit.date || visit.timestamp || "");
       return visitDate.startsWith(todayDate);
     }).length;
+
+    const autoBoost = await getVisitorAutoBoost(todayDate);
+    const totalAutoBoost = autoBoost.totalBoost;
+    const todayAutoBoost = autoBoost.todayBoost;
 
     const { totalOffset, todayOffset } = resolveRuntimeVisitorOffsets(pageVisits.length, todayCount);
     const nonTodayOffset = Math.max(totalOffset - todayOffset, 0);
@@ -1162,8 +1572,8 @@ app.get("/api/visitors/stats", requireAdmin, async (req, res) => {
       return acc;
     }, {});
 
-    if (todayOffset > 0) {
-      dailyVisitCounter[todayDate] = (dailyVisitCounter[todayDate] || 0) + todayOffset;
+    if (todayOffset > 0 || todayAutoBoost > 0) {
+      dailyVisitCounter[todayDate] = (dailyVisitCounter[todayDate] || 0) + todayOffset + todayAutoBoost;
     }
 
     if (nonTodayOffset > 0) {
@@ -1183,8 +1593,8 @@ app.get("/api/visitors/stats", requireAdmin, async (req, res) => {
       return acc;
     }, {});
 
-    if (totalOffset > 0) {
-      pageVisitCounter["/"] = (pageVisitCounter["/"] || 0) + totalOffset;
+    if (totalOffset > 0 || totalAutoBoost > 0) {
+      pageVisitCounter["/"] = (pageVisitCounter["/"] || 0) + totalOffset + totalAutoBoost;
     }
 
     const topPages = Object.entries(pageVisitCounter)
@@ -1194,10 +1604,16 @@ app.get("/api/visitors/stats", requireAdmin, async (req, res) => {
 
     res.json({
       ok: true,
-      total: pageVisits.length + totalOffset,
-      today: todayCount + todayOffset,
+      total: pageVisits.length + totalOffset + totalAutoBoost,
+      today: todayCount + todayOffset + todayAutoBoost,
       uniqueIps,
       rawTotal: visitors.length,
+      autoBoost: {
+        totalPerDay: VISITOR_AUTO_TOTAL_PER_DAY,
+        todayPerDay: VISITOR_AUTO_DAILY_BOOST,
+        baseDate: autoBoost.baseDate,
+        elapsedDays: autoBoost.elapsedDays
+      },
       dailyVisits,
       topPages
     });
@@ -1250,6 +1666,10 @@ async function bootstrap() {
 
   if (CUSTOM_SECTION_REQUIRE_TRUSTED_DEVICE) {
     console.log("[custom] Trusted device lock enabled (first allowed mobile device will be paired)");
+  }
+
+  if (!WHATSAPP_WEBHOOK_VERIFY_TOKEN) {
+    console.warn("[whatsapp] WHATSAPP_WEBHOOK_VERIFY_TOKEN is missing in .env (inbound WhatsApp webhook verification will fail)");
   }
 
   app.listen(PORT, () => {

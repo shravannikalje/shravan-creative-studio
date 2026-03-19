@@ -17,6 +17,8 @@ services:
         sync: false
       - key: SESSION_SECRET
         generateValue: true
+      - key: WHATSAPP_WEBHOOK_VERIFY_TOKEN
+        sync: false
       - key: CUSTOM_SECTION_PHONE_ONLY
         value: "true"
       - key: CUSTOM_SECTION_REQUIRE_TRUSTED_DEVICE

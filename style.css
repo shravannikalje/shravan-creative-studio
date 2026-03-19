@@ -293,8 +293,9 @@ a {
 	background: rgba(255, 255, 255, 0.03);
 }
 
+.btn-query,
 .btn-whatsapp {
-	background: linear-gradient(120deg, #25d366, #12af50);
+	background: linear-gradient(120deg, #6d7dff, #5364ea);
 	color: #fff !important;
 }
 
@@ -1029,6 +1030,37 @@ body.white-mode .custom-highlight {
 .project-thumb {
 	height: 160px;
 	position: relative;
+	background-size: cover;
+	background-position: center;
+	background-repeat: no-repeat;
+}
+
+.project-thumb--nova-cafe-rebrand {
+	background-image: url("png/png/Nova-Cafe-Rebrand.jpg");
+}
+
+.project-thumb--fitness-campaign-creatives {
+	background-image: url("png/png/Fitness-Campaign-Creatives.jpg");
+}
+
+.project-thumb--startup-landing-visuals {
+	background-image: url("png/png/Startup-Landing-Visuals.jpg");
+}
+
+.project-thumb--event-poster-series {
+	background-image: url("png/png/Event-Poster-Series.jpg");
+}
+
+.project-thumb--brand-launch-poster {
+	background-image: url("png/png/Brand-Launch-Poster.jpg");
+}
+
+.project-thumb--e-commerce-packaging {
+	background-image: url("png/png/E-commerce-Packaging.jpg");
+}
+
+.project-thumb--restaurant-promo-kit {
+	background-image: url("png/png/Restaurant-Promo-Kit.jpg");
 }
 
 .poster-art {
@@ -1117,6 +1149,23 @@ body.white-mode .custom-highlight {
 	gap: 0.6rem;
 }
 
+.contact-form.query-submitting {
+	border-color: rgba(109, 125, 255, 0.85);
+	box-shadow: 0 0 0 3px rgba(109, 125, 255, 0.18), var(--shadow);
+}
+
+.contact-form.query-submit-pulse {
+	animation: queryFormPulse 0.45s ease;
+}
+
+.contact-form.query-submit-success {
+	animation: queryFormSuccess 0.65s ease;
+}
+
+.contact-form.query-submit-error {
+	animation: queryFormError 0.4s ease;
+}
+
 .contact-form label {
 	font-size: 0.92rem;
 	color: #e8eeff;
@@ -1141,8 +1190,120 @@ body.white-mode .custom-highlight {
 	border-color: var(--primary);
 }
 
+.contact-form button[type="submit"].is-loading {
+	opacity: 0.9;
+	pointer-events: none;
+	position: relative;
+}
+
+.contact-form button[type="submit"].is-loading::after {
+	content: "";
+	width: 14px;
+	height: 14px;
+	margin-left: 0.55rem;
+	display: inline-block;
+	border-radius: 50%;
+	border: 2px solid rgba(255, 255, 255, 0.72);
+	border-top-color: transparent;
+	vertical-align: middle;
+	animation: querySpin 0.75s linear infinite;
+}
+
+.query-toast {
+	position: fixed;
+	right: 1rem;
+	bottom: 7rem;
+	z-index: 1200;
+	max-width: min(86vw, 340px);
+	padding: 0.72rem 0.9rem;
+	border-radius: 11px;
+	border: 1px solid rgba(255, 255, 255, 0.2);
+	background: rgba(20, 31, 61, 0.92);
+	color: #eaf1ff;
+	font-size: 0.88rem;
+	font-weight: 600;
+	line-height: 1.35;
+	box-shadow: 0 12px 24px rgba(8, 14, 36, 0.45);
+	opacity: 0;
+	transform: translateY(10px) scale(0.98);
+	pointer-events: none;
+	transition: opacity 0.2s ease, transform 0.22s ease;
+}
+
+.query-toast.show {
+	opacity: 1;
+	transform: translateY(0) scale(1);
+}
+
+.query-toast.info {
+	border-color: rgba(109, 125, 255, 0.55);
+	background: rgba(33, 43, 83, 0.95);
+}
+
+.query-toast.success {
+	border-color: rgba(40, 212, 137, 0.65);
+	background: rgba(13, 90, 58, 0.93);
+}
+
+.query-toast.error {
+	border-color: rgba(255, 120, 120, 0.62);
+	background: rgba(96, 34, 34, 0.94);
+}
+
 .form-note {
 	font-size: 0.86rem;
+}
+
+@keyframes queryFormPulse {
+	0% {
+		transform: scale(1);
+	}
+	50% {
+		transform: scale(1.008);
+	}
+	100% {
+		transform: scale(1);
+	}
+}
+
+@keyframes queryFormSuccess {
+	0% {
+		transform: scale(1);
+		box-shadow: 0 0 0 0 rgba(40, 212, 137, 0.42);
+	}
+	50% {
+		transform: scale(1.01);
+		box-shadow: 0 0 0 8px rgba(40, 212, 137, 0.06);
+	}
+	100% {
+		transform: scale(1);
+		box-shadow: 0 0 0 0 rgba(40, 212, 137, 0);
+	}
+}
+
+@keyframes queryFormError {
+	0%,
+	100% {
+		transform: translateX(0);
+	}
+	20% {
+		transform: translateX(-4px);
+	}
+	40% {
+		transform: translateX(4px);
+	}
+	60% {
+		transform: translateX(-3px);
+	}
+	80% {
+		transform: translateX(3px);
+	}
+}
+
+@keyframes querySpin {
+	to {
+		transform: rotate(360deg);
+	}
 }
 
 .site-footer {
@@ -1173,6 +1334,7 @@ body.white-mode .custom-highlight {
 	color: #c6d3ff;
 }
 
+.floating-query,
 .floating-wa {
 	position: fixed;
 	right: 1rem;
@@ -1184,8 +1346,8 @@ body.white-mode .custom-highlight {
 	place-items: center;
 	font-size: 1.25rem;
 	color: white;
-	background: linear-gradient(140deg, #25d366, #12af50);
-	box-shadow: 0 14px 26px rgba(9, 34, 12, 0.4);
+	background: linear-gradient(140deg, #6d7dff, #5364ea);
+	box-shadow: 0 14px 26px rgba(25, 36, 82, 0.42);
 	z-index: 999;
 }
 
